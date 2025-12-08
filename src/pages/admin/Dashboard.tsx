@@ -1,155 +1,327 @@
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import {
   Users,
-  DollarSign,
-  ShoppingCart,
+  Coins,
+  TrendingUp,
   ArrowUpRight,
-  ArrowDownRight,
   Activity,
-  Clock,
+  Trophy,
+  Shield,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+interface Stats {
+  totalUsers: {
+    value: number;
+    change: number;
+    changePercent: string;
+  };
+  totalCoins: {
+    value: number;
+    change: number;
+    changePercent: string;
+  };
+  coinsDistributed24h: {
+    value: number;
+    change: number;
+    changePercent: string;
+  };
+}
+
+interface TopUser {
+  _id: string;
+  username: string;
+  email: string;
+  coins: number;
+  rank: number;
+  missions: number;
+  lastActive: string;
+  badge: string | null;
+}
+
+interface ActivityLog {
+  id: string;
+  type: string;
+  user: string;
+  action: string;
+  amount: string;
+  time: string;
+  status: string;
+}
+
 export default function AdminDashboard() {
-  const stats = [
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [topUsers, setTopUsers] = useState<TopUser[]>([]);
+  const [recentLogs, setRecentLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Vui lòng đăng nhập');
+        return;
+      }
+
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+
+      // Fetch all data in parallel
+      const [statsRes, usersRes, logsRes] = await Promise.all([
+        fetch(`${API_URL}/admin/dashboard/stats`, { headers }),
+        fetch(`${API_URL}/admin/top-users?limit=5`, { headers }),
+        fetch(`${API_URL}/admin/recent-logs?limit=20`, { headers }),
+      ]);
+
+      if (!statsRes.ok || !usersRes.ok || !logsRes.ok) {
+        throw new Error('Không thể tải dữ liệu');
+      }
+
+      const [statsData, usersData, logsData] = await Promise.all([
+        statsRes.json(),
+        usersRes.json(),
+        logsRes.json(),
+      ]);
+
+      setStats(statsData.data);
+      setTopUsers(usersData.data);
+      setRecentLogs(logsData.data);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err instanceof Error ? err.message : 'Có lỗi xảy ra');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statsConfig = stats ? [
     {
-      label: 'Tổng người dùng',
-      value: '12,456',
-      change: '+12.5%',
-      trend: 'up',
+      label: 'Tổng users',
+      value: stats.totalUsers.value.toLocaleString(),
+      description: 'Người dùng đã đăng ký',
+      change: `+${stats.totalUsers.change}`,
       icon: <Users size={24} />,
+      color: 'text-blue-400',
+      bgColor: 'bg-blue-500/10',
     },
     {
-      label: 'Doanh thu tháng',
-      value: '₫245M',
-      change: '+18.2%',
-      trend: 'up',
-      icon: <DollarSign size={24} />,
+      label: 'Tổng xu trong hệ thống',
+      value: stats.totalCoins.value.toLocaleString(),
+      description: 'Tổng xu của tất cả users',
+      change: `+${stats.totalCoins.change.toLocaleString()}`,
+      icon: <Coins size={24} />,
+      color: 'text-yellow-400',
+      bgColor: 'bg-yellow-500/10',
     },
     {
-      label: 'Giao dịch hôm nay',
-      value: '1,234',
-      change: '+8.1%',
-      trend: 'up',
-      icon: <ShoppingCart size={24} />,
+      label: 'Xu được phát trong 24h',
+      value: stats.coinsDistributed24h.value.toLocaleString(),
+      description: 'Xu phát qua nhiệm vụ & sự kiện',
+      change: `+${stats.coinsDistributed24h.change.toLocaleString()}`,
+      icon: <TrendingUp size={24} />,
+      color: 'text-green-400',
+      bgColor: 'bg-green-500/10',
     },
-    {
-      label: 'Tỷ lệ hoạt động',
-      value: '94.2%',
-      change: '-2.3%',
-      trend: 'down',
-      icon: <Activity size={24} />,
-    },
-  ];
+  ] : [];
 
-  const recentUsers = [
-    { id: 1, name: 'Nguyễn Văn A', email: 'nguyenvana@example.com', joined: '2 phút trước', status: 'active' },
-    { id: 2, name: 'Trần Thị B', email: 'tranthib@example.com', joined: '15 phút trước', status: 'active' },
-    { id: 3, name: 'Lê Văn C', email: 'levanc@example.com', joined: '1 giờ trước', status: 'pending' },
-    { id: 4, name: 'Phạm Thị D', email: 'phamthid@example.com', joined: '2 giờ trước', status: 'active' },
-    { id: 5, name: 'Hoàng Văn E', email: 'hoangvane@example.com', joined: '3 giờ trước', status: 'active' },
-  ];
+  const getLogIcon = (type: string) => {
+    switch (type) {
+      case 'mission':
+        return <Activity size={16} className="text-blue-400" />;
+      case 'exchange':
+        return <ArrowUpRight size={16} className="text-orange-400" />;
+      case 'referral':
+        return <Users size={16} className="text-purple-400" />;
+      case 'checkin':
+        return <Shield size={16} className="text-green-400" />;
+      case 'purchase':
+        return <Coins size={16} className="text-yellow-400" />;
+      case 'game':
+        return <Trophy size={16} className="text-pink-400" />;
+      case 'admin':
+        return <FileText size={16} className="text-cyan-400" />;
+      default:
+        return <Activity size={16} className="text-neutral-400" />;
+    }
+  };
 
-  const recentTransactions = [
-    { id: 1, user: 'Player123', type: 'Nạp xu', amount: '+50,000đ', status: 'success', time: '5 phút trước' },
-    { id: 2, user: 'GamerXYZ', type: 'Rút xu', amount: '-30,000đ', status: 'success', time: '12 phút trước' },
-    { id: 3, user: 'ProGamer', type: 'Nạp xu', amount: '+100,000đ', status: 'pending', time: '25 phút trước' },
-    { id: 4, user: 'MasterChief', type: 'Đổi thẻ', amount: '-50,000đ', status: 'success', time: '45 phút trước' },
-    { id: 5, user: 'NinjaGamer', type: 'Nạp xu', amount: '+20,000đ', status: 'failed', time: '1 giờ trước' },
-  ];
+  const getRankBadge = (rank: number) => {
+    if (rank === 1) return { bg: 'bg-yellow-500', text: 'text-black', label: '#1' };
+    if (rank === 2) return { bg: 'bg-gray-400', text: 'text-black', label: '#2' };
+    if (rank === 3) return { bg: 'bg-orange-500', text: 'text-black', label: '#3' };
+    return { bg: 'bg-neutral-700', text: 'text-white', label: `#${rank}` };
+  };
 
-  const systemAlerts = [
-    { id: 1, type: 'warning', message: 'Server load cao hơn bình thường (85%)', time: '10 phút trước' },
-    { id: 2, type: 'info', message: 'Bảo trì hệ thống đã hoàn thành', time: '2 giờ trước' },
-    { id: 3, type: 'error', message: '3 giao dịch thất bại cần xem xét', time: '3 giờ trước' },
-  ];
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
+        <PageHeader
+          title="Admin Dashboard"
+          description="Thống kê tổng quan hệ thống"
+        />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="animate-spin text-blue-500" size={48} />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
+        <PageHeader
+          title="Admin Dashboard"
+          description="Thống kê tổng quan hệ thống"
+        />
+        <Card className="border-red-500/20 bg-red-500/10">
+          <p className="text-red-400 mb-2">{error}</p>
+          {error.includes('403') || error.includes('Forbidden') ? (
+            <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-yellow-400 text-sm mb-2">
+                ⚠️ Bạn không có quyền truy cập trang này. Chỉ admin mới có thể xem.
+              </p>
+              <p className="text-neutral-400 text-xs">
+                Nếu bạn là admin, vui lòng đăng xuất và đăng nhập lại để cập nhật quyền.
+              </p>
+            </div>
+          ) : null}
+          <Button onClick={fetchDashboardData} className="mt-4">Thử lại</Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
       <PageHeader
         title="Admin Dashboard"
-        description="Tổng quan quản trị hệ thống"
+        description="Thống kê tổng quan hệ thống"
       />
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {stats.map((stat, index) => (
-          <Card key={index}>
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <p className="text-xs text-neutral-500 mb-1">{stat.label}</p>
-                <p className="text-2xl mb-1">{stat.value}</p>
-                <div className="flex items-center gap-1">
-                  {stat.trend === 'up' ? (
-                    <ArrowUpRight size={14} className="text-green-500" />
-                  ) : (
-                    <ArrowDownRight size={14} className="text-red-500" />
-                  )}
-                  <p className={`text-xs ${stat.trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-                    {stat.change}
-                  </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {statsConfig && statsConfig.length > 0 ? statsConfig.map((stat, index) => (
+          <Card key={index} className="border-neutral-700">
+            <div className="flex items-start justify-between mb-4">
+              <div className={`p-3 ${stat.bgColor} rounded-lg`}>
+                <div className={stat.color}>
+                  {stat.icon}
                 </div>
               </div>
-              <div className="text-neutral-600">
-                {stat.icon}
+              <div className="flex items-center gap-1 text-green-400">
+                <ArrowUpRight size={14} />
+                <span className="text-xs">{stat.change}</span>
               </div>
             </div>
+            <div>
+              <p className="text-xs text-neutral-400 mb-1">{stat.label}</p>
+              <p className="text-3xl font-bold mb-1">{stat.value}</p>
+              <p className="text-xs text-neutral-500">{stat.description}</p>
+            </div>
           </Card>
-        ))}
+        )) : (
+          <div className="col-span-3 text-center py-8 text-neutral-500">
+            Đang tải dữ liệu thống kê...
+          </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        {/* Recent Users */}
+        {/* Top Users */}
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Người dùng mới</h3>
+            <h3 className="font-semibold flex items-center gap-2">
+              <Trophy size={20} className="text-yellow-500" />
+              Top users có nhiều xu nhất
+            </h3>
             <Button variant="outline" size="sm">Xem tất cả</Button>
           </div>
           <div className="space-y-3">
-            {recentUsers.map((user) => (
-              <div key={user.id} className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{user.name}</p>
-                  <p className="text-xs text-neutral-400">{user.email}</p>
+            {topUsers.map((user) => {
+              const badge = getRankBadge(user.rank);
+              return (
+                <div key={user._id} className="flex items-center gap-3 p-3 bg-neutral-800 rounded-lg">
+                  <div className={`w-10 h-10 ${badge.bg} ${badge.text} rounded-lg flex items-center justify-center font-bold flex-shrink-0`}>
+                    {badge.label}
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-semibold">
+                      {user.username.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-medium truncate">{user.username}</p>
+                      {user.badge && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          user.badge === 'VIP' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {user.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-neutral-400">{user.missions} nhiệm vụ • {user.lastActive}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-yellow-400">{user.coins.toLocaleString()} xu</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-neutral-400 mb-1">{user.joined}</p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    user.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
-                  }`}>
-                    {user.status === 'active' ? 'Hoạt động' : 'Chờ xác nhận'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
-        {/* Recent Transactions */}
+        {/* Recent Activity Logs */}
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Giao dịch gần đây</h3>
+            <h3 className="font-semibold flex items-center gap-2">
+              <FileText size={20} className="text-cyan-400" />
+              Logs hoạt động gần đây
+            </h3>
             <Button variant="outline" size="sm">Xem tất cả</Button>
           </div>
-          <div className="space-y-3">
-            {recentTransactions.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{tx.user}</p>
-                  <p className="text-xs text-neutral-400">{tx.type}</p>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {recentLogs.slice(0, 5).map((log) => (
+              <div key={log.id} className="flex items-start gap-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors">
+                <div className="mt-0.5">
+                  {getLogIcon(log.type)}
                 </div>
-                <div className="text-right">
-                  <p className={`text-sm font-medium mb-1 ${tx.amount.startsWith('+') ? 'text-green-400' : 'text-orange-400'}`}>
-                    {tx.amount}
-                  </p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    tx.status === 'success' ? 'bg-green-500/20 text-green-400' :
-                    tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                    'bg-red-500/20 text-red-400'
-                  }`}>
-                    {tx.status === 'success' ? 'Thành công' : tx.status === 'pending' ? 'Đang xử lý' : 'Thất bại'}
-                  </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="text-xs font-medium text-neutral-300">{log.user}</p>
+                    <span className={`text-xs font-semibold ${
+                      log.amount.startsWith('+') ? 'text-green-400' : 'text-orange-400'
+                    }`}>
+                      {log.amount}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mb-1">{log.action}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-neutral-600">{log.time}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      log.status === 'success' ? 'bg-green-500/20 text-green-400' :
+                      log.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-red-500/20 text-red-400'
+                    }`}>
+                      {log.status === 'success' ? 'Thành công' : log.status === 'pending' ? 'Đang xử lý' : 'Thất bại'}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -157,34 +329,48 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* System Alerts */}
+      {/* Full Activity Logs */}
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
-            <Clock size={18} />
-            Cảnh báo hệ thống
+            <Activity size={20} className="text-blue-400" />
+            Tất cả logs hoạt động
           </h3>
-          <Button variant="outline" size="sm">Xóa tất cả</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm">Xuất CSV</Button>
+            <Button variant="outline" size="sm">Lọc</Button>
+          </div>
         </div>
-        <div className="space-y-3">
-          {systemAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={`p-4 rounded-lg border ${
-                alert.type === 'error' ? 'bg-red-500/10 border-red-500/20' :
-                alert.type === 'warning' ? 'bg-yellow-500/10 border-yellow-500/20' :
-                'bg-blue-500/10 border-blue-500/20'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <p className={`text-sm ${
-                  alert.type === 'error' ? 'text-red-400' :
-                  alert.type === 'warning' ? 'text-yellow-400' :
-                  'text-blue-400'
-                }`}>
-                  {alert.message}
-                </p>
-                <p className="text-xs text-neutral-500">{alert.time}</p>
+        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+          {recentLogs.map((log) => (
+            <div key={log.id} className="flex items-start gap-3 p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors">
+              <div className="mt-0.5">
+                {getLogIcon(log.type)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{log.user}</p>
+                    <span className="text-xs text-neutral-600">•</span>
+                    <span className="text-xs text-neutral-500 capitalize">{log.type}</span>
+                  </div>
+                  <span className={`text-sm font-semibold ${
+                    log.amount.startsWith('+') ? 'text-green-400' : 'text-orange-400'
+                  }`}>
+                    {log.amount}
+                  </span>
+                </div>
+                <p className="text-sm text-neutral-300 mb-1">{log.action}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-neutral-500">{log.time}</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    log.status === 'success' ? 'bg-green-500/20 text-green-400' :
+                    log.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-red-500/20 text-red-400'
+                  }`}>
+                    {log.status === 'success' ? 'Thành công' : log.status === 'pending' ? 'Đang xử lý' : 'Thất bại'}
+                  </span>
+                </div>
               </div>
             </div>
           ))}

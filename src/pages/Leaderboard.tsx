@@ -1,165 +1,243 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
-import { Trophy, Medal, Award, TrendingUp } from 'lucide-react';
+import { Crown, Lightbulb, Lock, Copy, Home, Target, Clock, Users } from 'lucide-react';
 
 export default function Leaderboard() {
-  const [period, setPeriod] = useState<'week' | 'month' | 'all'>('week');
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'history'>('leaderboard');
+  const [timeLeft, setTimeLeft] = useState({
+    days: 29,
+    hours: 43,
+    minutes: 19,
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        let { days, hours, minutes } = prev;
+
+        if (minutes > 0) {
+          minutes--;
+        } else if (hours > 0) {
+          hours--;
+          minutes = 59;
+        } else if (days > 0) {
+          days--;
+          hours = 23;
+          minutes = 59;
+        }
+
+        return { days, hours, minutes };
+      });
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const leaderboardData = [
-    { rank: 1, username: 'ProGamer2024', coins: 15420, missions: 156, trend: 0 },
-    { rank: 2, username: 'GameMaster99', coins: 14230, missions: 148, trend: 1 },
-    { rank: 3, username: 'TopPlayer88', coins: 13890, missions: 142, trend: -1 },
-    { rank: 4, username: 'SuperGamer', coins: 12560, missions: 135, trend: 2 },
-    { rank: 5, username: 'ElitePlayer', coins: 11890, missions: 128, trend: -1 },
-    { rank: 6, username: 'MasterChief', coins: 10920, missions: 120, trend: 0 },
-    { rank: 7, username: 'NinjaGamer', coins: 10450, missions: 115, trend: 3 },
-    { rank: 8, username: 'DragonSlayer', coins: 9870, missions: 108, trend: -2 },
-    { rank: 9, username: 'PhoenixRising', coins: 9320, missions: 102, trend: 1 },
-    { rank: 10, username: 'ThunderStrike', coins: 8950, missions: 98, trend: -1 },
-    { rank: 11, username: 'ShadowHunter', coins: 8560, missions: 92, trend: 0 },
-    { rank: 12, username: 'IronFist', coins: 8120, missions: 88, trend: 2 },
+    { rank: 1, username: 'roki', badge: 'BXH tuần • Top 1', missions: 96, lastActive: '22:50 05/12' },
+    { rank: 2, username: 'trungtran1133', badge: 'BXH tuần • Top 2', missions: 77, lastActive: '18:18 05/12' },
+    { rank: 3, username: 'hiuhiuhuy', badge: 'BXH tuần • Top 3', missions: 55, lastActive: '11:39 05/12' },
+    { rank: 4, username: 'Hieusqr1234', badge: 'BXH tuần • Hạng 4', missions: 49, lastActive: '01:23 06/12' },
+    { rank: 5, username: 'Jack', badge: 'BXH tuần • Hạng 5', missions: 40, lastActive: '17:08 05/12' },
+    { rank: 6, username: '0355304206', badge: 'BXH tuần • Hạng 6', missions: 38, lastActive: '12:48 05/12' },
   ];
-
-  const myRank = { rank: 42, username: 'User Name', coins: 1250, missions: 24, trend: 5 };
 
   const topRewards = [
-    { rank: '1', reward: '5,000 xu + Huy hiệu Vàng' },
-    { rank: '2-3', reward: '3,000 xu + Huy hiệu Bạc' },
-    { rank: '4-10', reward: '1,000 xu + Huy hiệu Đồng' },
-    { rank: '11-50', reward: '500 xu' },
+    {
+      rank: 1,
+      title: 'Top 1: 5000 xu',
+      description: 'Phần thưởng cao nhất tuần',
+      color: 'bg-yellow-500',
+      icon: Crown,
+      coins: '+5000 xu',
+    },
+    {
+      rank: 2,
+      title: 'Top 2: 4000 xu',
+      description: 'Bám sát ngôi đầu bảng',
+      color: 'bg-gray-400',
+      icon: Lightbulb,
+      coins: '+4000 xu',
+    },
+    {
+      rank: 3,
+      title: 'Top 3: 3000 xu',
+      description: 'Giữ vững vị trí Top 3',
+      color: 'bg-orange-500',
+      icon: Lock,
+      coins: '+3000 xu',
+    },
   ];
 
-  const getRankIcon = (rank: number) => {
-    if (rank === 1) return <Trophy size={20} className="text-yellow-500" />;
-    if (rank === 2) return <Medal size={20} className="text-gray-400" />;
-    if (rank === 3) return <Award size={20} className="text-orange-600" />;
-    return null;
-  };
+  const getRankBadge = (rank: number) => {
+    const badges = {
+      1: { bg: 'bg-yellow-500', text: 'text-black', icon: '1' },
+      2: { bg: 'bg-gray-400', text: 'text-black', icon: '2' },
+      3: { bg: 'bg-orange-500', text: 'text-black', icon: '3' },
+    };
 
-  const getTrendIcon = (trend: number) => {
-    if (trend > 0) return <TrendingUp size={14} className="text-green-500" />;
-    if (trend < 0) return <TrendingUp size={14} className="text-red-500 rotate-180" />;
-    return <span className="text-xs text-neutral-500">-</span>;
+    return badges[rank as keyof typeof badges] || { bg: 'bg-neutral-700', text: 'text-white', icon: rank.toString() };
   };
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
-      <PageHeader
-        title="Bảng xếp hạng"
-        description="Cạnh tranh với người chơi khác để lên top"
-      />
+      {/* Header Info Card */}
+      <Card className="mb-6 bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-blue-500/20">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold mb-2">Bảng xếp hạng tuần</h2>
+            <p className="text-sm text-neutral-300">
+              Dựa nhiệm vụ mỗi tuần, chốt thưởng từ <span className="text-white font-semibold">đứng lúc Thứ Hai 00:05 (giờ VN)</span>.
+            </p>
+            <div className="flex items-center gap-4 mt-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-blue-400" />
+                <span className="text-neutral-400">Tính từ:</span>
+                <span className="text-white font-semibold">2025-12-01 00:00:00</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-green-400" />
+                <span className="text-neutral-400">10 người đang đua</span>
+              </div>
+            </div>
+            <p className="text-xs text-neutral-500 mt-2">
+              Nếu bảng số nhiệm vụ, sẽ chấm một điểm hiện tại sớm hơn để quyết định thứ hạng cao hơn.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-sm border border-neutral-700">
+              <Copy size={16} />
+              Copy Top 3
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-sm border border-neutral-700">
+              <Home size={16} />
+              Trang chủ
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-black font-semibold rounded-lg text-sm">
+              <Target size={16} />
+              Làm nhiệm vụ ngay
+            </button>
+          </div>
+        </div>
+      </Card>
 
-      <div className="flex gap-3 mb-6">
+      {/* Top 3 Rewards */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Crown size={24} className="text-yellow-500" />
+            <h3 className="text-xl font-bold">DỰA TOP NHẬN THƯỞNG TUẦN</h3>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-neutral-800 rounded-lg border border-neutral-700">
+            <Clock size={16} className="text-neutral-400" />
+            <span className="text-sm font-semibold">{timeLeft.days}d:{timeLeft.hours}h:{timeLeft.minutes}m</span>
+            <span className="text-xs text-neutral-500">đến giờ reset</span>
+          </div>
+          <button className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-black font-semibold rounded-lg text-sm">
+            Đua ngay
+          </button>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-4 mb-6">
+          {topRewards.map((reward) => {
+            const Icon = reward.icon;
+            const badge = getRankBadge(reward.rank);
+
+            return (
+              <Card key={reward.rank} className="border-neutral-700 hover:border-neutral-600 transition-colors">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 ${reward.color} rounded-lg flex items-center justify-center`}>
+                      <Icon size={20} className="text-black" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm">{reward.title}</h4>
+                      <p className="text-xs text-neutral-400">{reward.description}</p>
+                    </div>
+                  </div>
+                  <div className={`${badge.bg} ${badge.text} w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold`}>
+                    {reward.rank}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-lg font-bold">{reward.coins}</span>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-2 mb-6">
         <button
-          className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-            period === 'week' ? 'bg-white text-black' : 'bg-neutral-800 text-neutral-400'
+          onClick={() => setActiveTab('leaderboard')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'leaderboard'
+              ? 'bg-cyan-500 text-black'
+              : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
           }`}
-          onClick={() => setPeriod('week')}
         >
-          Tuần này
+          Đang diễn ra
         </button>
         <button
-          className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-            period === 'month' ? 'bg-white text-black' : 'bg-neutral-800 text-neutral-400'
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'history'
+              ? 'bg-cyan-500 text-black'
+              : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
           }`}
-          onClick={() => setPeriod('month')}
         >
-          Tháng này
-        </button>
-        <button
-          className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-            period === 'all' ? 'bg-white text-black' : 'bg-neutral-800 text-neutral-400'
-          }`}
-          onClick={() => setPeriod('all')}
-        >
-          Mọi lúc
+          Tuần trước
         </button>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6 mb-6">
-        <Card className="lg:col-span-2">
-          <h3 className="text-lg mb-4">Top người chơi</h3>
-          <div className="space-y-2">
-            {leaderboardData.map((player) => (
-              <div
-                key={player.rank}
-                className={`
-                  flex items-center gap-4 p-3 rounded-lg transition-colors
-                  ${player.rank <= 3 ? 'bg-neutral-800' : 'hover:bg-neutral-800'}
-                `}
-              >
-                <div className="w-12 text-center">
-                  {getRankIcon(player.rank) || (
-                    <span className="text-sm text-neutral-400">#{player.rank}</span>
-                  )}
+      {/* Leaderboard List */}
+      <div className="space-y-3">
+        {leaderboardData.map((player) => {
+          const badge = getRankBadge(player.rank);
+
+          return (
+            <Card
+              key={player.rank}
+              className={`border-neutral-700 ${
+                player.rank <= 3 ? 'bg-neutral-800/50' : 'hover:bg-neutral-800/30'
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`${badge.bg} ${badge.text} w-12 h-12 rounded-lg flex items-center justify-center text-xl font-bold flex-shrink-0`}>
+                  {badge.icon}
                 </div>
-                <div className="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs">{player.username.charAt(0)}</span>
+
+                <div className="w-12 h-12 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-semibold">
+                    {player.username.charAt(0).toUpperCase()}
+                  </span>
                 </div>
+
                 <div className="flex-1">
-                  <p className="text-sm mb-0.5">{player.username}</p>
-                  <p className="text-xs text-neutral-500">{player.missions} nhiệm vụ</p>
+                  <p className="text-sm font-semibold mb-1">{player.username}</p>
+                  <p className="text-xs text-neutral-500">{player.badge}</p>
                 </div>
-                <div className="text-right flex items-center gap-3">
-                  <div>
-                    <p className="text-sm">{player.coins.toLocaleString()} xu</p>
-                    <div className="flex items-center justify-end gap-1 text-xs">
-                      {getTrendIcon(player.trend)}
-                    </div>
+
+                {player.rank <= 3 && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-neutral-700/50 rounded-full">
+                    <Crown size={14} className="text-yellow-500" />
+                    <span className="text-sm font-semibold">
+                      {player.rank === 1 ? '+5000 xu' : player.rank === 2 ? '+4000 xu' : '+3000 xu'}
+                    </span>
                   </div>
+                )}
+
+                <div className="text-right">
+                  <p className="text-lg font-bold mb-1">{player.missions} nhiệm vụ</p>
+                  <p className="text-xs text-neutral-500">Chặm mốc hiện tại lúc {player.lastActive}</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="border-2 border-white">
-            <h3 className="text-lg mb-4">Xếp hạng của bạn</h3>
-            <div className="text-center py-4">
-              <p className="text-4xl mb-2">#{myRank.rank}</p>
-              <p className="text-sm text-neutral-400 mb-4">{myRank.username}</p>
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-800">
-                <div>
-                  <p className="text-xs text-neutral-400 mb-1">Tổng xu</p>
-                  <p className="text-lg">{myRank.coins}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-neutral-400 mb-1">Nhiệm vụ</p>
-                  <p className="text-lg">{myRank.missions}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-center gap-2 mt-4 text-green-500">
-                <TrendingUp size={16} />
-                <span className="text-sm">Tăng {myRank.trend} hạng</span>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="text-lg mb-4">Phần thưởng</h3>
-            <div className="space-y-3">
-              {topRewards.map((reward, index) => (
-                <div key={index} className="pb-3 border-b border-neutral-800 last:border-0 last:pb-0">
-                  <p className="text-sm mb-1">Top {reward.rank}</p>
-                  <p className="text-xs text-neutral-400">{reward.reward}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="text-lg mb-3">Cách tăng hạng</h3>
-            <div className="space-y-2 text-xs text-neutral-400">
-              <p>• Hoàn thành nhiệm vụ hàng ngày</p>
-              <p>• Điểm danh liên tục</p>
-              <p>• Tham gia mini game</p>
-              <p>• Mời bạn bè tham gia</p>
-              <p>• Tích lũy xu từ các hoạt động</p>
-            </div>
-          </Card>
-        </div>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

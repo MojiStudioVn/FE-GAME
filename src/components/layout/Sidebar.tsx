@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   Home,
   Calendar,
@@ -46,6 +47,7 @@ const menuItems: MenuItem[] = [
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
 
   const getBreadcrumbs = () => {
     const path = location.pathname;
@@ -122,11 +124,15 @@ export function Sidebar() {
             className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-800 transition-all duration-200"
           >
             <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center">
-              <User size={16} />
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.username} className="w-full h-full rounded-full object-cover" />
+              ) : (
+                <User size={16} />
+              )}
             </div>
             <div className="flex-1">
-              <p className="text-sm">User Name</p>
-              <p className="text-xs text-neutral-500">1,250 xu</p>
+              <p className="text-sm">{user?.username || 'Guest'}</p>
+              <p className="text-xs text-neutral-500">{user?.coins?.toLocaleString() || 0} xu</p>
             </div>
           </NavLink>
         </div>

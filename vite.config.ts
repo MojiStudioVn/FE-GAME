@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
       port: parseInt(env.VITE_PORT || "5173"),
       allowedHosts: ["scorpioid-municipal-maude.ngrok-free.dev"],
       host: true,
+      proxy: {
+        "/api": "http://localhost:5000",
+      },
     },
   };
 });

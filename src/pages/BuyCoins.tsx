@@ -203,15 +203,15 @@ export default function BuyCoins() {
           <Card>
             <h3 className="text-lg mb-4">Ưu đãi</h3>
             <div className="space-y-3">
-              <div className="p-3 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg">
+              <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                 <p className="text-sm mb-1">🎁 Nạp lần đầu</p>
                 <p className="text-xs text-neutral-300">Nhận thêm 50% xu cho lần nạp đầu tiên</p>
               </div>
-              <div className="p-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                 <p className="text-sm mb-1">⚡ Flash sale cuối tuần</p>
                 <p className="text-xs text-neutral-300">Giảm 20% cho tất cả gói xu</p>
               </div>
-              <div className="p-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-lg">
+              <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
                 <p className="text-sm mb-1">💎 Gói VIP</p>
                 <p className="text-xs text-neutral-300">Mua gói 10,000 xu nhận thêm 2,500 xu</p>
               </div>

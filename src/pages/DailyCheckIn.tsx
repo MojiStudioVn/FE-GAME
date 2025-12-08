@@ -1,91 +1,343 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { Check, Lock } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { Check, Gift, Target, Calendar, Trophy, ArrowRight } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function DailyCheckIn() {
-  const [checkedDays, setCheckedDays] = useState([1, 2, 3]);
-  const currentDay = 4;
+  const { token, user, refreshUser } = useAuth();
+  const { showToast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [checkedDays, setCheckedDays] = useState<number[]>([]);
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [totalCoins, setTotalCoins] = useState(0);
+  const [canCheckIn, setCanCheckIn] = useState(true);
+  const [resetTime, setResetTime] = useState('06:58:51');
+  const [weekStart, setWeekStart] = useState('');
+  const [weekEnd, setWeekEnd] = useState('');
 
-  const rewards = [
-    { day: 1, coins: 10, bonus: false },
-    { day: 2, coins: 15, bonus: false },
-    { day: 3, coins: 20, bonus: false },
-    { day: 4, coins: 25, bonus: false },
-    { day: 5, coins: 30, bonus: false },
-    { day: 6, coins: 40, bonus: false },
-    { day: 7, coins: 100, bonus: true },
-    { day: 8, coins: 15, bonus: false },
-    { day: 9, coins: 20, bonus: false },
-    { day: 10, coins: 25, bonus: false },
-    { day: 11, coins: 30, bonus: false },
-    { day: 12, coins: 35, bonus: false },
-    { day: 13, coins: 45, bonus: false },
-    { day: 14, coins: 150, bonus: true },
-  ];
+  // Fetch check-in status
+  const fetchCheckInStatus = async () => {
+    if (!token) return;
 
-  const handleCheckIn = () => {
-    if (!checkedDays.includes(currentDay)) {
-      setCheckedDays([...checkedDays, currentDay]);
+    try {
+      const response = await fetch(`${API_URL}/checkin`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setCanCheckIn(data.data.canCheckIn);
+        setCurrentStreak(data.data.currentStreak);
+        setTotalCoins(data.data.totalCoins);
+
+        // Set checked days from week check-ins
+        const checkedDaysOfWeek = data.data.weekCheckIns.map((ci: any) => ci.dayOfWeek);
+        setCheckedDays(checkedDaysOfWeek);
+
+        // Format week dates
+        const start = new Date(data.data.weekStart);
+        const end = new Date(data.data.weekEnd);
+        end.setDate(end.getDate() - 1);
+        setWeekStart(formatDate(start));
+        setWeekEnd(formatDate(end));
+      }
+    } catch (error) {
+      console.error('Error fetching check-in status:', error);
+    } finally {
+      setLoading(false);
     }
   };
+
+  const formatDate = (date: Date) => {
+    const d = date.getDate().toString().padStart(2, '0');
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    return `${d}/${m}`;
+  };
+
+  const handleCheckIn = async () => {
+    if (!token || !canCheckIn) return;
+
+    setChecking(true);
+    try {
+      const response = await fetch(`${API_URL}/checkin`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showToast({
+          type: 'success',
+          title: 'Điểm danh thành công!',
+          message: data.message,
+          duration: 3000,
+        });
+
+        // Refresh status and user data
+        await Promise.all([fetchCheckInStatus(), refreshUser()]);
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Lỗi!',
+          message: data.message,
+          duration: 3000,
+        });
+      }
+    } catch (error: unknown) {
+      showToast({
+        type: 'error',
+        title: 'Lỗi!',
+        message: error instanceof Error ? error.message : 'Có lỗi xảy ra, vui lòng thử lại',
+        duration: 3000,
+      });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCheckInStatus();
+  }, [token]);
+
+  useEffect(() => {
+    // Countdown timer
+    const interval = setInterval(() => {
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      const diff = tomorrow.getTime() - now.getTime();
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      setResetTime(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calculate next milestone
+  const getNextMilestone = () => {
+    const milestones = [3, 7, 14, 30];
+    for (const m of milestones) {
+      if (currentStreak < m) return m;
+    }
+    return 30;
+  };
+
+  const nextMilestone = getNextMilestone();
+
+  // Weekly rewards based on day of week (Monday=1, Sunday=0)
+  const weeklyRewards = [
+    { day: 1, coins: 200, label: 'T2' },
+    { day: 2, coins: 100, label: 'T3' },
+    { day: 3, coins: 100, label: 'T4' },
+    { day: 4, coins: 100, label: 'T5' },
+    { day: 5, coins: 150, label: 'T6' },
+    { day: 6, coins: 300, label: 'T7' },
+    { day: 0, coins: 300, label: 'CN' },
+  ];
+
+  const today = new Date().getDay();
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
+        <PageHeader
+          title="Điểm danh nhận xu"
+          description="Làm nhiệm vụ mỗi ngày, điểm danh liên tục để nhận thêm thưởng chuỗi."
+        />
+        <Card className="text-center py-8">
+          <p className="text-neutral-400">Đang tải...</p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
       <PageHeader
-        title="Điểm danh mỗi ngày"
-        description="Điểm danh hàng ngày để nhận xu miễn phí"
+        title="Điểm danh nhận xu"
+        description="Làm nhiệm vụ mỗi ngày, điểm danh liên tục để nhận thêm thưởng chuỗi."
       />
 
-      <Card className="mb-6">
-        <div className="text-center py-6">
-          <p className="text-sm text-neutral-400 mb-2">Chuỗi điểm danh hiện tại</p>
-          <p className="text-4xl mb-4">{checkedDays.length} ngày</p>
-          <Button onClick={handleCheckIn} disabled={checkedDays.includes(currentDay)}>
-            {checkedDays.includes(currentDay) ? 'Đã điểm danh hôm nay' : 'Điểm danh ngay'}
-          </Button>
+      {/* Nhiệm vụ chính */}
+      <Card className="mb-6 bg-neutral-900 border-blue-800/30">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
+            <Target size={24} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold mb-2">Làm ít nhất 1 nhiệm vụ rồi quay lại điểm danh nhận xu.</h3>
+            <p className="text-sm text-neutral-400 mb-4">
+              Bạn cần làm ít nhất 1 nhiệm vụ (nhiệm vụ sẽ bị khoá 24h) rồi mới được điểm danh nhận xu.
+            </p>
+            <div className="flex flex-wrap gap-4 mb-4">
+              <div className="flex items-center gap-2 text-sm">
+                <Gift size={16} className="text-neutral-400" />
+                <span className="text-neutral-400">Thưởng theo thứ:</span>
+                <span className="text-white font-semibold">100 xu</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar size={16} className="text-neutral-400" />
+                <span className="text-neutral-400">Chuỗi hiện tại:</span>
+                <span className="text-white font-semibold">0 ngày</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Trophy size={16} className="text-neutral-400" />
+                <span className="text-neutral-400">Mốc tiếp theo:</span>
+                <span className="text-white font-semibold">3 ngày</span>
+                <span className="text-neutral-500">(+50 xu)</span>
+              </div>
+            </div>
+            <Button
+              onClick={handleCheckIn}
+              disabled={!canCheckIn || checking}
+              className="bg-blue-500 hover:bg-blue-600 text-black"
+            >
+              <ArrowRight size={18} />
+              {checking ? 'Đang xử lý...' : 'Đi làm nhiệm vụ'}
+            </Button>
+          </div>
         </div>
       </Card>
 
+      {/* Thống kê */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card className="border-blue-800/30">
+          <div className="text-sm text-neutral-400 mb-1">HÔM NAY</div>
+          <div className="text-3xl font-bold mb-1">+{weeklyRewards.find(r => r.day === today)?.coins || 100} xu</div>
+          <div className="text-xs text-neutral-500">Sẵn sàng nhận ngay khi điểm danh.</div>
+        </Card>
+
+        <Card className="border-green-800/30">
+          <div className="text-sm text-neutral-400 mb-1">CHUỖI NGÀY</div>
+          <div className="text-3xl font-bold mb-1">{currentStreak} ngày</div>
+          <div className="text-xs text-neutral-500">Bắt đầu ngày đầu tiên hôm nay.</div>
+        </Card>
+
+        <Card className="border-yellow-800/30">
+          <div className="text-sm text-neutral-400 mb-1">MỐC THƯỞNG TIẾP THEO</div>
+          <div className="text-3xl font-bold mb-1">{nextMilestone} ngày</div>
+          <div className="text-xs text-neutral-500">Còn {nextMilestone} ngày nữa (+50 xu).</div>
+        </Card>
+      </div>
+
+      {/* Lịch điểm danh */}
       <Card>
-        <h3 className="text-lg mb-4">Phần thưởng điểm danh</h3>
-        <div className="grid grid-cols-7 gap-3">
-          {rewards.map((reward) => {
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Calendar size={20} />
+            <div>
+              <span className="text-sm text-neutral-400">Tuần: </span>
+              <span className="text-white font-semibold">{weekStart} – {weekEnd}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <span className="text-neutral-400">Reset trong:</span>
+              <span className="text-white font-semibold">{resetTime}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-3 mb-6">
+          {weeklyRewards.map((reward, index) => {
             const isChecked = checkedDays.includes(reward.day);
-            const isCurrent = reward.day === currentDay;
-            const isLocked = reward.day > currentDay;
+            const isCurrent = reward.day === today;
+            const isPast = (reward.day < today && today !== 0) || (today === 0 && reward.day < 6);
 
             return (
               <div
-                key={reward.day}
+                key={index}
                 className={`
-                  relative aspect-square rounded-lg border-2 flex flex-col items-center justify-center
-                  ${isCurrent ? 'border-white bg-neutral-800' : 'border-neutral-800'}
-                  ${isChecked ? 'bg-neutral-800' : 'bg-neutral-900'}
-                  ${reward.bonus ? 'border-yellow-500' : ''}
+                  relative rounded-lg border-2 p-4 flex flex-col items-center justify-center
+                  transition-all duration-200
+                  ${isCurrent ? 'border-yellow-500 bg-yellow-500/10' : 'border-neutral-800'}
+                  ${isChecked ? 'bg-green-900/20 border-green-700' : 'bg-neutral-900'}
+                  ${!isChecked && !isCurrent && !isPast ? 'opacity-50' : ''}
                 `}
               >
                 {isChecked && (
-                  <div className="absolute top-1 right-1">
-                    <Check size={16} className="text-green-500" />
+                  <div className="absolute top-2 right-2">
+                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                      <Check size={14} className="text-white" />
+                    </div>
                   </div>
                 )}
-                {isLocked && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
-                    <Lock size={20} className="text-neutral-600" />
-                  </div>
-                )}
-                <p className="text-xs text-neutral-500 mb-1">Ngày {reward.day}</p>
-                <p className="text-sm">{reward.coins} xu</p>
-                {reward.bonus && (
-                  <span className="absolute -top-2 -right-2 bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded">
-                    x2
-                  </span>
-                )}
+                <p className="text-xs text-neutral-400 mb-2 whitespace-pre-line text-center">
+                  {reward.label}
+                </p>
+                <p className={`text-lg font-bold ${isCurrent ? 'text-yellow-400' : 'text-white'}`}>
+                  +{reward.coins}
+                </p>
+                <div className="flex items-center gap-1 mt-1">
+                  <Gift size={12} className="text-neutral-500" />
+                  <span className="text-xs text-neutral-500">điểm Xu danh</span>
+                </div>
               </div>
             );
           })}
+        </div>
+
+        <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Trophy size={18} className="text-yellow-500" />
+              <span className="text-sm text-neutral-400">Nhiệm vụ</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <span className="text-sm text-neutral-400">BXH</span>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleCheckIn}
+            disabled={!canCheckIn || checking}
+            className={`${canCheckIn && !checking ? 'bg-neutral-700 hover:bg-neutral-600' : 'bg-neutral-800 cursor-not-allowed'}`}
+          >
+            <Check size={18} />
+            {checking ? 'Đang xử lý...' : canCheckIn ? 'Cần làm nhiệm vụ' : 'Đã điểm danh'}
+          </Button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-neutral-400">Số dư hiện tại: <span className="text-white font-semibold">{user?.coins?.toLocaleString() || 0} xu</span></span>
+          </div>
+          <div className="text-xs text-neutral-500 mb-2">
+            Điểm danh đều để nhận thưởng mốc <span className="text-yellow-400">3, 7, 14, 30</span> ngày.
+          </div>
+          <div className="text-xs text-neutral-500 mb-3">
+            Tiến độ chuỗi (tối đa 30 ngày):
+          </div>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: 30 }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-2 flex-1 rounded-full ${
+                  i < currentStreak ? 'bg-blue-500' :
+                  [2, 6, 13, 29].includes(i) ? 'bg-yellow-500' :
+                  'bg-neutral-800'
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </Card>
     </div>

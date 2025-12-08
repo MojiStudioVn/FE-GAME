@@ -1,32 +1,133 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import {
-  Settings as SettingsIcon,
   Globe,
-  CreditCard,
-  Bell,
   Shield,
-  Mail,
   Database,
-  Palette,
+  Trash2,
+  AlertCircle,
+  Loader2,
+  Save,
 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState({
-    siteName: 'Game Platform',
-    siteUrl: 'https://gameplatform.com',
-    supportEmail: 'support@gameplatform.com',
-    coinRate: 100,
-    minDeposit: 10000,
-    minWithdraw: 50000,
-    maintenanceMode: false,
-    emailNotifications: true,
-    smsNotifications: false,
-    newUserBonus: 100,
-    referralBonus: 50,
+    siteBrand: 'Game Platform',
+    cspMode: 'report-only',
+    cardHistoryRetentionDays: 90,
   });
+  const [healthStats, setHealthStats] = useState({
+    totalCleanedRecords: 0,
+    retentionDays: 90,
+    lastCleanup: null as string | null,
+  });
+  const [saving, setSaving] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [activeTab, setActiveTab] = useState('general');
+
+  useEffect(() => {
+    fetchSettings();
+    fetchHealthStats();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/admin/settings`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.settings) {
+          setSettings(data.settings);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
+  const fetchHealthStats = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/admin/health-stats`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.stats) {
+          setHealthStats(data.stats);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching health stats:', error);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/admin/settings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(settings),
+      });
+
+      if (response.ok) {
+        alert('Lưu cài đặt thành công!');
+        fetchHealthStats();
+      } else {
+        alert('Có lỗi xảy ra!');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Có lỗi xảy ra!');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRunCleanup = async () => {
+    if (!confirm('Bạn có chắc muốn dọn dẹp dữ liệu cũ ngay bây giờ?')) return;
+
+    setCleaning(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/admin/cleanup-now`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(`Dọn dẹp thành công! Đã xóa ${data.deletedCount} bản ghi.`);
+        fetchHealthStats();
+      } else {
+        alert('Có lỗi xảy ra!');
+      }
+    } catch (error) {
+      console.error('Error running cleanup:', error);
+      alert('Có lỗi xảy ra!');
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
@@ -40,33 +141,32 @@ export default function AdminSettings() {
         <Card className="lg:col-span-1">
           <h3 className="font-semibold mb-4">Danh mục</h3>
           <div className="space-y-2">
-            <button className="w-full text-left px-4 py-2 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('general')}
+              className={`w-full text-left px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                activeTab === 'general' ? 'bg-neutral-800' : 'hover:bg-neutral-800'
+              }`}
+            >
               <Globe size={16} />
               Thông tin chung
             </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-2">
-              <CreditCard size={16} />
-              Thanh toán
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-2">
-              <Bell size={16} />
-              Thông báo
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`w-full text-left px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                activeTab === 'security' ? 'bg-neutral-800' : 'hover:bg-neutral-800'
+              }`}
+            >
               <Shield size={16} />
               Bảo mật
             </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-2">
-              <Mail size={16} />
-              Email
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('health')}
+              className={`w-full text-left px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                activeTab === 'health' ? 'bg-neutral-800' : 'hover:bg-neutral-800'
+              }`}
+            >
               <Database size={16} />
-              Cơ sở dữ liệu
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-2">
-              <Palette size={16} />
-              Giao diện
+              Sức khỏe hệ thống
             </button>
           </div>
         </Card>
@@ -74,156 +174,154 @@ export default function AdminSettings() {
         {/* Settings Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* General Settings */}
-          <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <Globe size={18} />
-              <h3 className="font-semibold">Thông tin chung</h3>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-white mb-2 block">Tên website</label>
-                <input
-                  type="text"
-                  value={settings.siteName}
-                  onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-white mb-2 block">URL website</label>
-                <input
-                  type="text"
-                  value={settings.siteUrl}
-                  onChange={(e) => setSettings({ ...settings, siteUrl: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-white mb-2 block">Email hỗ trợ</label>
-                <input
-                  type="email"
-                  value={settings.supportEmail}
-                  onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                />
-              </div>
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
+          {activeTab === 'general' && (
+            <Card>
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Globe size={20} />
+                Thông tin chung
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-neutral-400 mb-2">Site Brand</label>
                   <input
-                    type="checkbox"
-                    checked={settings.maintenanceMode}
-                    onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })}
-                    className="w-5 h-5"
+                    type="text"
+                    value={settings.siteBrand}
+                    onChange={(e) => setSettings({ ...settings, siteBrand: e.target.value })}
+                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="VD: Game Platform"
                   />
-                  <span className="text-sm">Bật chế độ bảo trì</span>
-                </label>
-                <p className="text-xs text-neutral-400 mt-1 ml-7">Website sẽ hiển thị thông báo bảo trì cho người dùng</p>
+                  <p className="text-xs text-neutral-500 mt-1">Tên hiển thị của website</p>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
 
-          {/* Payment Settings */}
-          <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <CreditCard size={18} />
-              <h3 className="font-semibold">Cài đặt thanh toán</h3>
-            </div>
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
+          {/* Security Settings */}
+          {activeTab === 'security' && (
+            <Card>
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Shield size={20} />
+                Cài đặt bảo mật
+              </h3>
+              <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-white mb-2 block">Tỷ giá xu (VNĐ/xu)</label>
-                  <input
-                    type="number"
-                    value={settings.coinRate}
-                    onChange={(e) => setSettings({ ...settings, coinRate: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                  />
+                  <label className="block text-sm text-neutral-400 mb-2">CSP Mode</label>
+                  <select
+                    value={settings.cspMode}
+                    onChange={(e) => setSettings({ ...settings, cspMode: e.target.value })}
+                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="report-only">Report-Only (Chỉ báo cáo)</option>
+                    <option value="enforce">Enforce (Thực thi)</option>
+                  </select>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Report-Only: Chỉ ghi log vi phạm. Enforce: Chặn các vi phạm CSP.
+                  </p>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-white mb-2 block">Nạp tối thiểu (VNĐ)</label>
-                  <input
-                    type="number"
-                    value={settings.minDeposit}
-                    onChange={(e) => setSettings({ ...settings, minDeposit: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-white mb-2 block">Rút tối thiểu (VNĐ)</label>
-                <input
-                  type="number"
-                  value={settings.minWithdraw}
-                  onChange={(e) => setSettings({ ...settings, minWithdraw: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                />
-              </div>
-            </div>
-          </Card>
 
-          {/* Notification Settings */}
-          <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <Bell size={18} />
-              <h3 className="font-semibold">Cài đặt thông báo</h3>
-            </div>
-            <div className="space-y-3">
-              <label className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg cursor-pointer hover:bg-neutral-750 transition-colors">
-                <span className="text-sm">Thông báo qua Email</span>
-                <input
-                  type="checkbox"
-                  checked={settings.emailNotifications}
-                  onChange={(e) => setSettings({ ...settings, emailNotifications: e.target.checked })}
-                  className="w-5 h-5"
-                />
-              </label>
-              <label className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg cursor-pointer hover:bg-neutral-750 transition-colors">
-                <span className="text-sm">Thông báo qua SMS</span>
-                <input
-                  type="checkbox"
-                  checked={settings.smsNotifications}
-                  onChange={(e) => setSettings({ ...settings, smsNotifications: e.target.checked })}
-                  className="w-5 h-5"
-                />
-              </label>
-            </div>
-          </Card>
-
-          {/* Bonus Settings */}
-          <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <SettingsIcon size={18} />
-              <h3 className="font-semibold">Cài đặt thưởng</h3>
-            </div>
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-white mb-2 block">Thưởng người dùng mới (xu)</label>
+                  <label className="block text-sm text-neutral-400 mb-2">
+                    Card History Retention Days
+                  </label>
                   <input
                     type="number"
-                    value={settings.newUserBonus}
-                    onChange={(e) => setSettings({ ...settings, newUserBonus: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                    min="1"
+                    max="365"
+                    value={settings.cardHistoryRetentionDays}
+                    onChange={(e) =>
+                      setSettings({ ...settings, cardHistoryRetentionDays: parseInt(e.target.value) })
+                    }
+                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-white mb-2 block">Thưởng giới thiệu (xu)</label>
-                  <input
-                    type="number"
-                    value={settings.referralBonus}
-                    onChange={(e) => setSettings({ ...settings, referralBonus: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                  />
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Số ngày giữ lịch sử giao dịch thẻ cào. Sau đó sẽ tự động xóa.
+                  </p>
                 </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
+
+          {/* Health Block */}
+          {activeTab === 'health' && (
+            <Card>
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Database size={20} />
+                Sức khỏe hệ thống
+              </h3>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="p-4 bg-neutral-800 rounded-lg">
+                  <p className="text-sm text-neutral-400 mb-1">Tổng records đã dọn dẹp</p>
+                  <p className="text-2xl font-bold text-green-400">
+                    {healthStats.totalCleanedRecords.toLocaleString()}
+                  </p>
+                </div>
+                <div className="p-4 bg-neutral-800 rounded-lg">
+                  <p className="text-sm text-neutral-400 mb-1">Retention Policy</p>
+                  <p className="text-2xl font-bold text-blue-400">{healthStats.retentionDays} ngày</p>
+                </div>
+              </div>
+
+              {healthStats.lastCleanup && (
+                <div className="p-4 bg-neutral-800 rounded-lg mb-4">
+                  <p className="text-sm text-neutral-400">Lần dọn dẹp gần nhất</p>
+                  <p className="text-sm font-medium">
+                    {new Date(healthStats.lastCleanup).toLocaleString('vi-VN')}
+                  </p>
+                </div>
+              )}
+
+              <div className="border-t border-neutral-700 pt-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2 text-red-400">
+                  <AlertCircle size={18} />
+                  Dọn dẹp thủ công
+                </h4>
+                <p className="text-sm text-neutral-400 mb-4">
+                  Xóa các bản ghi lịch sử thẻ cào cũ hơn {settings.cardHistoryRetentionDays} ngày.
+                  Hành động này không thể hoàn tác!
+                </p>
+                <Button
+                  onClick={handleRunCleanup}
+                  disabled={cleaning}
+                  className="gap-2 bg-red-500 hover:bg-red-600"
+                >
+                  {cleaning ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Đang dọn dẹp...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} />
+                      Run Cleanup Now
+                    </>
+                  )}
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* Save Button */}
-          <div className="flex justify-end gap-3">
-            <Button variant="outline">Hủy</Button>
-            <Button variant="primary">Lưu thay đổi</Button>
-          </div>
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Lưu thay đổi</p>
+                <p className="text-sm text-neutral-400">Áp dụng các cài đặt vào hệ thống</p>
+              </div>
+              <Button onClick={handleSaveSettings} disabled={saving} className="gap-2">
+                {saving ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    Đang lưu...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Lưu cài đặt
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     </div>

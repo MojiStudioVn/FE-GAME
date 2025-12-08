@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../contexts/AuthContext';
 import {
   User,
   Mail,
-  Phone,
   MapPin,
   Calendar,
   Edit2,
@@ -15,13 +16,13 @@ import {
   Bell,
   Wallet,
   Award,
-  Settings,
   LogOut,
   Eye,
   EyeOff,
   Smartphone,
   Copy,
   Check,
+  Loader2,
 } from 'lucide-react';
 import {
   Dialog,
@@ -33,7 +34,10 @@ import {
 } from '../components/ui/dialog';
 
 export default function Profile() {
+  const { user, loading, updateProfile, logout } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
+
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'stats' | 'settings'>('info');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -43,51 +47,72 @@ export default function Profile() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  const [editData, setEditData] = useState({
+    username: '',
+    avatar: '',
+  });
   const [passwordData, setPasswordData] = useState({
     oldPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
 
-  const [profile, setProfile] = useState({
-    username: 'GamePlayer123',
-    email: 'player@example.com',
-    phone: '0123456789',
-    location: 'TP. Hồ Chí Minh',
-    bio: 'Yêu thích chơi game và kiếm xu mỗi ngày! 🎮',
-    joinDate: '01/01/2024',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GamePlayer123',
-  });
+  useEffect(() => {
+    // Chỉ redirect khi đã load xong và không có user
+    if (!loading && !user) {
+      navigate('/login');
+    }
+    // Cập nhật editData khi có user
+    if (user && !isEditing) {
+      setEditData({
+        username: user.username,
+        avatar: user.avatar || '',
+      });
+    }
+  }, [user, loading, navigate, isEditing]);
 
-  const stats = [
-    { icon: <Wallet className="text-yellow-400" size={20} />, label: 'Tổng xu', value: '1,250' },
-    { icon: <Award className="text-purple-400" size={20} />, label: 'Nhiệm vụ hoàn thành', value: '24' },
-    { icon: <User className="text-blue-400" size={20} />, label: 'Bạn bè mời', value: '12' },
-    { icon: <Calendar className="text-green-400" size={20} />, label: 'Ngày tham gia', value: profile.joinDate },
-  ];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="animate-spin" size={48} />
+      </div>
+    );
+  }
 
-  const achievements = [
-    { name: 'Người mới', desc: 'Hoàn thành 5 nhiệm vụ đầu tiên', earned: true },
-    { name: 'Chuyên gia', desc: 'Hoàn thành 50 nhiệm vụ', earned: true },
-    { name: 'VIP', desc: 'Mời thành công 10 bạn bè', earned: true },
-    { name: 'Đại gia', desc: 'Sở hữu 10,000 xu', earned: false },
-  ];
+  if (!user) {
+    return null;
+  }
 
-  const activities = [
-    { action: 'Hoàn thành nhiệm vụ "Đăng nhập 7 ngày"', time: '5 phút trước', coins: '+50 xu' },
-    { action: 'Nhận thẻ game Garena 50k', time: '1 giờ trước', coins: '-500 xu' },
-    { action: 'Mời thành công 1 bạn bè', time: '2 giờ trước', coins: '+100 xu' },
-    { action: 'Chơi Mini game - Vòng quay', time: '3 giờ trước', coins: '+30 xu' },
-  ];
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('vi-VN');
+  };
 
-  const handleSaveProfile = () => {
-    showToast({
-      type: 'success',
-      title: 'Cập nhật thành công!',
-      message: 'Thông tin hồ sơ đã được lưu',
-      duration: 3000,
-    });
-    setIsEditing(false);
+  const handleSaveProfile = async () => {
+    try {
+      setUpdating(true);
+      await updateProfile({
+        username: editData.username,
+        avatar: editData.avatar,
+      });
+      showToast({
+        type: 'success',
+        title: 'Cập nhật thành công!',
+        message: 'Thông tin hồ sơ đã được lưu',
+        duration: 3000,
+      });
+      setIsEditing(false);
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'Cập nhật thất bại',
+        message: error instanceof Error ? error.message : 'Có lỗi xảy ra',
+        duration: 3000,
+      });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleAvatarChange = () => {
@@ -98,6 +123,26 @@ export default function Profile() {
       duration: 3000,
     });
   };
+
+  const handleLogout = () => {
+    logout();
+    showToast({
+      type: 'success',
+      title: 'Đăng xuất thành công',
+      message: 'Hẹn gặp lại bạn!',
+      duration: 2000,
+    });
+    navigate('/login');
+  };
+
+  const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`;
+
+  const stats = [
+    { icon: <Wallet className="text-yellow-400" size={20} />, label: 'Tổng xu', value: user.coins.toLocaleString() },
+    { icon: <Award className="text-purple-400" size={20} />, label: 'Cấp độ', value: user.level.toString() },
+    { icon: <User className="text-blue-400" size={20} />, label: 'Kinh nghiệm', value: user.experience.toLocaleString() },
+    { icon: <Calendar className="text-green-400" size={20} />, label: 'Ngày tham gia', value: formatDate(user.createdAt) },
+  ];
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
@@ -110,35 +155,47 @@ export default function Profile() {
           <Card className="text-center">
             <div className="relative inline-block mb-4">
               <img
-                src={profile.avatar}
+                src={user.avatar || defaultAvatar}
                 alt="Avatar"
                 className="w-32 h-32 rounded-full border-4 border-neutral-800 bg-neutral-800"
               />
-              <button
-                onClick={handleAvatarChange}
-                className="absolute bottom-0 right-0 bg-white text-black p-2 rounded-full hover:bg-neutral-200 transition-all hover:scale-110"
-              >
-                <Camera size={16} />
-              </button>
+              {isEditing && (
+                <button
+                  onClick={handleAvatarChange}
+                  className="absolute bottom-0 right-0 bg-white text-black p-2 rounded-full hover:bg-neutral-200 transition-all hover:scale-110"
+                >
+                  <Camera size={16} />
+                </button>
+              )}
             </div>
-            <h2 className="text-xl font-semibold mb-1">{profile.username}</h2>
-            <p className="text-neutral-500 text-sm mb-4">{profile.email}</p>
+            <h2 className="text-xl font-semibold mb-1">{user.username}</h2>
+            <p className="text-neutral-500 text-sm mb-4">{user.email}</p>
             <div className="flex items-center justify-center gap-2 text-sm text-neutral-400 mb-4">
               <MapPin size={14} />
-              <span>{profile.location}</span>
+              <span>Việt Nam</span>
             </div>
-            {profile.bio && (
-              <p className="text-sm text-neutral-400 italic mb-4">{profile.bio}</p>
-            )}
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="primary" size="sm" className="justify-center">
-                <Edit2 size={14} />
-                Chỉnh sửa
-              </Button>
-              <Button variant="outline" size="sm" className="justify-center">
-                <Settings size={14} />
-                Cài đặt
-              </Button>
+              {isEditing ? (
+                <>
+                  <Button variant="primary" size="sm" className="justify-center col-span-2" onClick={handleSaveProfile} disabled={updating}>
+                    {updating ? <Loader2 className="animate-spin" size={14} /> : <><Check size={14} /> Lưu</>}
+                  </Button>
+                  <Button variant="outline" size="sm" className="justify-center col-span-2" onClick={() => setIsEditing(false)}>
+                    Hủy
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="primary" size="sm" className="justify-center" onClick={() => setIsEditing(true)}>
+                    <Edit2 size={14} />
+                    Chỉnh sửa
+                  </Button>
+                  <Button variant="outline" size="sm" className="justify-center" onClick={handleLogout}>
+                    <LogOut size={14} />
+                    Đăng xuất
+                  </Button>
+                </>
+              )}
             </div>
           </Card>
 
@@ -202,18 +259,6 @@ export default function Profile() {
             {/* Info Tab */}
             {activeTab === 'info' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Thông tin cá nhân</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditing(!isEditing)}
-                  >
-                    <Edit2 size={14} />
-                    {isEditing ? 'Hủy' : 'Chỉnh sửa'}
-                  </Button>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm text-neutral-400 mb-1 block">Tên người dùng</label>
@@ -221,8 +266,8 @@ export default function Profile() {
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
                       <input
                         type="text"
-                        value={profile.username}
-                        onChange={(e) => setProfile({ ...profile, username: e.target.value })}
+                        value={isEditing ? editData.username : user.username}
+                        onChange={(e) => setEditData({ ...editData, username: e.target.value })}
                         disabled={!isEditing}
                         className="w-full bg-neutral-800 border border-neutral-700 rounded-lg pl-10 pr-4 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neutral-600"
                       />
@@ -235,59 +280,57 @@ export default function Profile() {
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
                       <input
                         type="email"
-                        value={profile.email}
-                        onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                        disabled={!isEditing}
-                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg pl-10 pr-4 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neutral-600"
+                        value={user.email}
+                        disabled
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg pl-10 pr-4 py-2 text-white opacity-50 cursor-not-allowed"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-sm text-neutral-400 mb-1 block">Số điện thoại</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
-                      <input
-                        type="tel"
-                        value={profile.phone}
-                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                        disabled={!isEditing}
-                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg pl-10 pr-4 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neutral-600"
-                      />
+                    <label className="text-sm text-neutral-400 mb-1 block">Vai trò</label>
+                    <div className="px-4 py-2">
+                      <span className={`px-3 py-1 rounded-full text-xs ${
+                        user.role === 'admin'
+                          ? 'bg-red-500/20 text-red-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                      }`}>
+                        {user.role === 'admin' ? 'Quản trị viên' : 'Người dùng'}
+                      </span>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-sm text-neutral-400 mb-1 block">Địa chỉ</label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
-                      <input
-                        type="text"
-                        value={profile.location}
-                        onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                        disabled={!isEditing}
-                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg pl-10 pr-4 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neutral-600"
-                      />
+                    <label className="text-sm text-neutral-400 mb-1 block">Trạng thái</label>
+                    <div className="px-4 py-2">
+                      <span className={`px-3 py-1 rounded-full text-xs ${
+                        user.isVerified
+                          ? 'bg-green-500/20 text-green-400'
+                          : 'bg-yellow-500/20 text-yellow-400'
+                      }`}>
+                        {user.isVerified ? 'Đã xác thực' : 'Chưa xác thực'}
+                      </span>
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <label className="text-sm text-neutral-400 mb-1 block">Giới thiệu bản thân</label>
-                  <textarea
-                    value={profile.bio}
-                    onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                    disabled={!isEditing}
-                    rows={3}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neutral-600 resize-none"
-                    placeholder="Viết vài dòng về bản thân..."
-                  />
                 </div>
 
                 {isEditing && (
+                  <div>
+                    <label className="text-sm text-neutral-400 mb-1 block">URL Avatar (tùy chọn)</label>
+                    <input
+                      type="text"
+                      value={editData.avatar}
+                      onChange={(e) => setEditData({ ...editData, avatar: e.target.value })}
+                      placeholder="https://example.com/avatar.jpg"
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-neutral-600"
+                    />
+                  </div>
+                )}
+
+                {isEditing && (
                   <div className="flex gap-3 pt-4">
-                    <Button variant="primary" onClick={handleSaveProfile}>
-                      Lưu thay đổi
+                    <Button variant="primary" onClick={handleSaveProfile} disabled={updating}>
+                      {updating ? <Loader2 className="animate-spin" size={14} /> : 'Lưu thay đổi'}
                     </Button>
                     <Button variant="outline" onClick={() => setIsEditing(false)}>
                       Hủy
@@ -300,60 +343,39 @@ export default function Profile() {
             {/* Stats Tab */}
             {activeTab === 'stats' && (
               <div className="space-y-6">
-                {/* Achievements */}
                 <div>
                   <h3 className="font-semibold mb-4 flex items-center gap-2">
                     <Award size={18} className="text-yellow-400" />
-                    Thành tích
+                    Thống kê tài khoản
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {achievements.map((achievement, index) => (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-lg border ${
-                          achievement.earned
-                            ? 'bg-yellow-500/10 border-yellow-500/20'
-                            : 'bg-neutral-800 border-neutral-700 opacity-50'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <Award
-                            size={20}
-                            className={achievement.earned ? 'text-yellow-400' : 'text-neutral-600'}
-                          />
-                          <div>
-                            <h4 className="font-medium mb-1">{achievement.name}</h4>
-                            <p className="text-xs text-neutral-400">{achievement.desc}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-neutral-800 p-4 rounded-lg text-center">
+                      <Wallet className="text-yellow-400 mx-auto mb-2" size={24} />
+                      <p className="text-2xl font-bold">{user.coins.toLocaleString()}</p>
+                      <p className="text-sm text-neutral-400">Xu hiện tại</p>
+                    </div>
+                    <div className="bg-neutral-800 p-4 rounded-lg text-center">
+                      <Award className="text-purple-400 mx-auto mb-2" size={24} />
+                      <p className="text-2xl font-bold">{user.level}</p>
+                      <p className="text-sm text-neutral-400">Cấp độ</p>
+                    </div>
+                    <div className="bg-neutral-800 p-4 rounded-lg text-center">
+                      <User className="text-blue-400 mx-auto mb-2" size={24} />
+                      <p className="text-2xl font-bold">{user.experience.toLocaleString()}</p>
+                      <p className="text-sm text-neutral-400">Kinh nghiệm</p>
+                    </div>
+                    <div className="bg-neutral-800 p-4 rounded-lg text-center">
+                      <Calendar className="text-green-400 mx-auto mb-2" size={24} />
+                      <p className="text-sm font-bold">{formatDate(user.createdAt)}</p>
+                      <p className="text-sm text-neutral-400">Ngày tham gia</p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Recent Activities */}
-                <div>
-                  <h3 className="font-semibold mb-4">Hoạt động gần đây</h3>
-                  <div className="space-y-3">
-                    {activities.map((activity, index) => (
-                      <div
-                        key={index}
-                        className="flex items-start justify-between p-3 bg-neutral-800 rounded-lg hover:bg-neutral-750 transition-colors"
-                      >
-                        <div className="flex-1">
-                          <p className="text-sm mb-1">{activity.action}</p>
-                          <p className="text-xs text-neutral-500">{activity.time}</p>
-                        </div>
-                        <span
-                          className={`text-sm font-medium ${
-                            activity.coins.startsWith('+') ? 'text-green-400' : 'text-red-400'
-                          }`}
-                        >
-                          {activity.coins}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="bg-neutral-800/50 p-6 rounded-lg text-center">
+                  <p className="text-neutral-400">
+                    Lịch sử hoạt động và thành tích sẽ sớm được cập nhật
+                  </p>
                 </div>
               </div>
             )}

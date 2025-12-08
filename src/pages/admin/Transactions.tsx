@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { PageHeader } from '../../components/PageHeader';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -17,89 +18,37 @@ export default function AdminTransactions() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const transactions = [
-    {
-      id: 'TX001234',
-      user: 'player123',
-      type: 'deposit',
-      method: 'MoMo',
-      amount: 50000,
-      coins: 500,
-      status: 'success',
-      time: '2024-12-03 14:30',
-    },
-    {
-      id: 'TX001233',
-      user: 'gamerxyz',
-      type: 'withdraw',
-      method: 'Banking',
-      amount: 30000,
-      coins: 300,
-      status: 'success',
-      time: '2024-12-03 14:15',
-    },
-    {
-      id: 'TX001232',
-      user: 'progamer',
-      type: 'deposit',
-      method: 'Card',
-      amount: 100000,
-      coins: 1000,
-      status: 'pending',
-      time: '2024-12-03 13:45',
-    },
-    {
-      id: 'TX001231',
-      user: 'masterchief',
-      type: 'exchange',
-      method: 'Coins',
-      amount: 50000,
-      coins: 500,
-      status: 'success',
-      time: '2024-12-03 13:20',
-    },
-    {
-      id: 'TX001230',
-      user: 'ninjagamer',
-      type: 'deposit',
-      method: 'MoMo',
-      amount: 20000,
-      coins: 200,
-      status: 'failed',
-      time: '2024-12-03 12:50',
-    },
-    {
-      id: 'TX001229',
-      user: 'dragonslayer',
-      type: 'purchase',
-      method: 'Coins',
-      amount: 95000,
-      coins: 1000,
-      status: 'success',
-      time: '2024-12-03 12:30',
-    },
-    {
-      id: 'TX001228',
-      user: 'phoenixrising',
-      type: 'deposit',
-      method: 'Banking',
-      amount: 180000,
-      coins: 2000,
-      status: 'success',
-      time: '2024-12-03 11:45',
-    },
-    {
-      id: 'TX001227',
-      user: 'thunderstrike',
-      type: 'withdraw',
-      method: 'MoMo',
-      amount: 15000,
-      coins: 150,
-      status: 'pending',
-      time: '2024-12-03 11:20',
-    },
-  ];
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const res = await axios.get('/api/card/admin/all', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data && res.data.data) {
+          setTransactions(res.data.data.map((tx: any) => ({
+            id: tx._id || tx.transId || '',
+            user: tx.userId?.username || tx.userId || '',
+            type: 'deposit', // CardTransaction is always deposit
+            method: tx.telco || 'Card',
+            amount: tx.amount || tx.declaredValue || 0,
+            coins: tx.value || tx.cardValue || 0,
+            status: tx.status === 1 ? 'success' : (tx.status === 99 ? 'pending' : 'failed'),
+            time: tx.createdAt ? new Date(tx.createdAt).toLocaleString('vi-VN') : '',
+          })));
+        }
+      } catch (err) {
+        setTransactions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTransactions();
+  }, []);
 
   const stats = [
     {

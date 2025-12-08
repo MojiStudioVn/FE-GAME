@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { PageHeader } from '../../components/PageHeader';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -13,38 +14,74 @@ import {
 
 export default function AdminReports() {
   const [period, setPeriod] = useState<'week' | 'month' | 'year'>('month');
+  const [stats, setStats] = useState<any[]>([]);
+  const [revenueData, setRevenueData] = useState<any[]>([]);
+  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [topUsers, setTopUsers] = useState<any[]>([]);
 
-  const stats = [
-    { label: 'Doanh thu tháng này', value: '₫245M', change: '+18.2%', trend: 'up' },
-    { label: 'Người dùng mới', value: '1,234', change: '+12.5%', trend: 'up' },
-    { label: 'Tổng giao dịch', value: '5,678', change: '+8.1%', trend: 'up' },
-    { label: 'Tỷ lệ chuyển đổi', value: '3.2%', change: '+0.5%', trend: 'up' },
-  ];
-
-  const revenueData = [
-    { month: 'T1', revenue: 180 },
-    { month: 'T2', revenue: 195 },
-    { month: 'T3', revenue: 210 },
-    { month: 'T4', revenue: 185 },
-    { month: 'T5', revenue: 220 },
-    { month: 'T6', revenue: 245 },
-  ];
-
-  const topProducts = [
-    { name: 'Gói 1000 xu', sales: 234, revenue: '₫22.2M' },
-    { name: 'Gói 500 xu', sales: 189, revenue: '₫9.5M' },
-    { name: 'Thẻ Garena 100k', sales: 156, revenue: '₫15.6M' },
-    { name: 'Gói 2000 xu', sales: 98, revenue: '₫17.6M' },
-    { name: 'Thẻ Vcoin 50k', sales: 87, revenue: '₫4.4M' },
-  ];
-
-  const topUsers = [
-    { username: 'phoenixrising', spent: '₫1.2M', transactions: 45 },
-    { username: 'masterchief', spent: '₫980K', transactions: 38 },
-    { username: 'dragonslayer', spent: '₫850K', transactions: 32 },
-    { username: 'gamerxyz', spent: '₫720K', transactions: 28 },
-    { username: 'thunderstrike', spent: '₫650K', transactions: 25 },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        // Dashboard stats
+        const statsRes = await axios.get('/api/admin/dashboard/stats', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (statsRes.data && statsRes.data.data) {
+          const s = statsRes.data.data;
+          setStats([
+            { label: 'Tổng người dùng', value: s.totalUsers.value, change: `+${s.totalUsers.change}`, trend: 'up' },
+            { label: 'Tổng xu', value: s.totalCoins.value, change: `+${s.totalCoins.change}`, trend: 'up' },
+            { label: 'Xu phát 24h', value: s.coinsDistributed24h.value, change: `+${s.coinsDistributed24h.change}`, trend: 'up' },
+          ]);
+          setRevenueData([
+            { month: '24h', revenue: s.coinsDistributed24h.value },
+            { month: 'Tổng', revenue: s.totalCoins.value },
+          ]);
+        }
+        // Top users
+        const usersRes = await axios.get('/api/admin/top-users', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (usersRes.data && usersRes.data.data) {
+          setTopUsers(usersRes.data.data.map((u: any) => ({
+            username: u.username,
+            spent: `${u.coins.toLocaleString()} xu`,
+            transactions: u.missions || 0,
+          })));
+        }
+        // Recent logs (mock topProducts from logs)
+        const logsRes = await axios.get('/api/admin/recent-logs', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (logsRes.data && logsRes.data.data) {
+          // Group by action for topProducts (demo)
+          const productMap: Record<string, { name: string; sales: number; revenue: string }> = {};
+          logsRes.data.data.forEach((log: any) => {
+            if (log.action && log.amount) {
+              if (!productMap[log.action]) {
+                productMap[log.action] = { name: log.action, sales: 0, revenue: '0 xu' };
+              }
+              productMap[log.action].sales += 1;
+              // Parse revenue from amount string
+              const match = /([+-]?\d+)/.exec(log.amount);
+              if (match) {
+                const rev = parseInt(match[1], 10);
+                productMap[log.action].revenue = `${rev.toLocaleString()} xu`;
+              }
+            }
+          });
+          setTopProducts(Object.values(productMap).slice(0, 5));
+        }
+      } catch (err) {
+        setStats([]);
+        setRevenueData([]);
+        setTopProducts([]);
+        setTopUsers([]);
+      }
+    };
+    fetchData();
+  }, []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
@@ -115,18 +152,18 @@ export default function AdminReports() {
             <BarChart3 size={18} className="text-neutral-400" />
           </div>
           <div className="h-64 flex items-end justify-between gap-2">
-            {revenueData.map((data, index) => (
+            {revenueData.length > 0 ? revenueData.map((data, index) => (
               <div key={index} className="flex-1 flex flex-col items-center gap-2">
                 <div
                   className="w-full bg-gradient-to-t from-orange-500 to-pink-500 rounded-t-lg transition-all hover:opacity-80"
-                  style={{ height: `${(data.revenue / 245) * 100}%` }}
+                  style={{ height: `${(data.revenue / (revenueData[0]?.revenue || 1)) * 100}%` }}
                 />
                 <p className="text-xs text-neutral-400">{data.month}</p>
               </div>
-            ))}
+            )) : <p className="text-neutral-400">Không có dữ liệu doanh thu</p>}
           </div>
           <div className="mt-4 pt-4 border-t border-neutral-700">
-            <p className="text-sm text-neutral-400">Doanh thu trung bình: <span className="text-white font-semibold">₫205M/tháng</span></p>
+            <p className="text-sm text-neutral-400">Doanh thu trung bình: <span className="text-white font-semibold">{revenueData.length > 0 ? `${Math.round(revenueData.reduce((sum, d) => sum + d.revenue, 0) / revenueData.length).toLocaleString()} xu/tháng` : 'Không có dữ liệu'}</span></p>
           </div>
         </Card>
 
@@ -140,18 +177,18 @@ export default function AdminReports() {
             <BarChart3 size={18} className="text-neutral-400" />
           </div>
           <div className="h-64 flex items-end justify-between gap-2">
-            {[120, 145, 168, 152, 189, 210].map((value, index) => (
+            {stats.length > 0 ? [stats[0]].map((stat, index) => (
               <div key={index} className="flex-1 flex flex-col items-center gap-2">
                 <div
                   className="w-full bg-gradient-to-t from-green-500 to-emerald-500 rounded-t-lg transition-all hover:opacity-80"
-                  style={{ height: `${(value / 210) * 100}%` }}
+                  style={{ height: `100%` }}
                 />
-                <p className="text-xs text-neutral-400">T{index + 1}</p>
+                <p className="text-xs text-neutral-400">Tăng trưởng</p>
               </div>
-            ))}
+            )) : <p className="text-neutral-400">Không có dữ liệu tăng trưởng</p>}
           </div>
           <div className="mt-4 pt-4 border-t border-neutral-700">
-            <p className="text-sm text-neutral-400">Tăng trưởng trung bình: <span className="text-white font-semibold">+164 user/tháng</span></p>
+            <p className="text-sm text-neutral-400">Tăng trưởng trung bình: <span className="text-white font-semibold">{stats.length > 0 ? `+${stats[0].change} user/tháng` : 'Không có dữ liệu'}</span></p>
           </div>
         </Card>
       </div>
@@ -161,7 +198,7 @@ export default function AdminReports() {
         <Card>
           <h3 className="font-semibold mb-4">Sản phẩm bán chạy</h3>
           <div className="space-y-3">
-            {topProducts.map((product, index) => (
+            {topProducts.length > 0 ? topProducts.map((product, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg flex items-center justify-center font-bold text-sm">
@@ -174,7 +211,7 @@ export default function AdminReports() {
                 </div>
                 <p className="text-sm font-semibold">{product.revenue}</p>
               </div>
-            ))}
+            )) : <p className="text-neutral-400">Không có dữ liệu sản phẩm</p>}
           </div>
         </Card>
 
@@ -182,7 +219,7 @@ export default function AdminReports() {
         <Card>
           <h3 className="font-semibold mb-4">Người dùng chi tiêu nhiều nhất</h3>
           <div className="space-y-3">
-            {topUsers.map((user, index) => (
+            {topUsers.length > 0 ? topUsers.map((user, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
@@ -200,7 +237,7 @@ export default function AdminReports() {
                 </div>
                 <p className="text-sm font-semibold">{user.spent}</p>
               </div>
-            ))}
+            )) : <p className="text-neutral-400">Không có dữ liệu người dùng</p>}
           </div>
         </Card>
       </div>

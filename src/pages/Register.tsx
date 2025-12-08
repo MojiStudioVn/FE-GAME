@@ -3,11 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, Eye, EyeOff, User, UserPlus } from 'lucide-react';
 
 export default function Register() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { register } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -18,9 +21,9 @@ export default function Register() {
     agreeTerms: false,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement register logic
+
     if (formData.password !== formData.confirmPassword) {
       showToast({
         type: 'error',
@@ -30,14 +33,37 @@ export default function Register() {
       });
       return;
     }
-    console.log('Register:', formData);
-    showToast({
-      type: 'success',
-      title: 'Đăng ký thành công!',
-      message: 'Chào mừng bạn đến với Game Platform',
-      duration: 3000
-    });
-    setTimeout(() => navigate('/login'), 500);
+
+    if (!formData.agreeTerms) {
+      showToast({
+        type: 'error',
+        title: 'Lỗi!',
+        message: 'Vui lòng đồng ý với điều khoản sử dụng',
+        duration: 3000
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await register(formData.username, formData.email, formData.password);
+      showToast({
+        type: 'success',
+        title: 'Đăng ký thành công!',
+        message: 'Chào mừng bạn đến với Game Platform',
+        duration: 3000
+      });
+      setTimeout(() => navigate('/dashboard'), 500);
+    } catch (error: unknown) {
+      showToast({
+        type: 'error',
+        title: 'Đăng ký thất bại!',
+        message: error instanceof Error ? error.message : 'Có lỗi xảy ra, vui lòng thử lại',
+        duration: 3000
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -161,9 +187,9 @@ export default function Register() {
             </div>
 
             {/* Submit Button */}
-            <Button type="submit" variant="primary" className="w-full justify-center">
+            <Button type="submit" variant="primary" className="w-full justify-center" disabled={loading}>
               <UserPlus size={18} />
-              Đăng ký
+              {loading ? 'Đang xử lý...' : 'Đăng ký'}
             </Button>
 
             {/* Divider */}

@@ -3,11 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { login } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -15,17 +18,29 @@ export default function Login() {
     rememberMe: false,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement login logic
-    console.log('Login:', formData);
-    showToast({
-      type: 'success',
-      title: 'Đăng nhập thành công!',
-      message: 'Chào mừng bạn quay trở lại',
-      duration: 3000
-    });
-    setTimeout(() => navigate('/dashboard'), 500);
+
+    setLoading(true);
+    try {
+      await login(formData.email, formData.password);
+      showToast({
+        type: 'success',
+        title: 'Đăng nhập thành công!',
+        message: 'Chào mừng bạn quay trở lại',
+        duration: 3000
+      });
+      setTimeout(() => navigate('/dashboard'), 500);
+    } catch (error: unknown) {
+      showToast({
+        type: 'error',
+        title: 'Đăng nhập thất bại!',
+        message: error instanceof Error ? error.message : 'Email hoặc mật khẩu không đúng',
+        duration: 3000
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -40,19 +55,19 @@ export default function Login() {
         {/* Login Card */}
         <Card>
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
+            {/* Email or Username */}
             <div>
               <label className="block text-sm text-neutral-400 mb-2">
-                Email
+                Email hoặc tên người dùng
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={18} />
                 <input
-                  type="email"
+                  type="text"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full bg-neutral-800 border border-neutral-700 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-600"
-                  placeholder="example@gmail.com"
+                  placeholder="username hoặc email@gmail.com"
                   required
                 />
               </div>
@@ -100,9 +115,9 @@ export default function Login() {
             </div>
 
             {/* Submit Button */}
-            <Button type="submit" variant="primary" className="w-full justify-center">
+            <Button type="submit" variant="primary" className="w-full justify-center" disabled={loading}>
               <LogIn size={18} />
-              Đăng nhập
+              {loading ? 'Đang xử lý...' : 'Đăng nhập'}
             </Button>
 
             {/* Divider */}

@@ -11,26 +11,42 @@ import {
   X,
   ChevronRight,
   Shield,
+  Wallet,
+  Gift,
+  Link2,
+  Target,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface AdminLayoutProps {
   children: ReactNode;
+  user?: {
+    role: string;
+  };
 }
 
-export function AdminLayout({ children }: AdminLayoutProps) {
+export function AdminLayout({ children, user }: AdminLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const menuItems = [
-    { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/admin/users', icon: Users, label: 'Người dùng' },
-    { path: '/admin/transactions', icon: CreditCard, label: 'Giao dịch' },
-    { path: '/admin/reports', icon: BarChart3, label: 'Báo cáo' },
-    { path: '/admin/settings', icon: Settings, label: 'Cài đặt' },
-  ];
+  // Only show admin menu if user is admin
+  const isAdmin = user?.role === 'admin';
+  const menuItems = isAdmin
+    ? [
+        { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/admin/users', icon: Users, label: 'Người dùng' },
+        { path: '/admin/transactions', icon: CreditCard, label: 'Giao dịch' },
+        { path: '/admin/reports', icon: BarChart3, label: 'Báo cáo' },
+        { path: '/admin/payment-settings', icon: Wallet, label: 'Thanh toán' },
+        { path: '/admin/missions', icon: Target, label: 'Nhiệm vụ' },
+        { path: '/admin/gift-tokens', icon: Gift, label: 'Mã quà tặng' },
+        { path: '/admin/api-providers', icon: Link2, label: 'Nhà cung cấp API' },
+        { path: '/admin/settings', icon: Settings, label: 'Cài đặt' },
+      ]
+    : [];
 
   const handleLogout = () => {
     // TODO: Implement logout logic

@@ -22,6 +22,8 @@ import { verifyToken, isAdmin } from "../middleware/auth.js";
 import {
   getMissions,
   createMission,
+  updateMission,
+  deleteMission,
 } from "../controllers/missionController.js";
 
 const router = express.Router();
@@ -34,6 +36,7 @@ router.get("/recent-logs", verifyToken, isAdmin, getRecentLogs);
 // Payment configuration routes
 router.get("/payment-config", verifyToken, isAdmin, getPaymentConfig);
 router.post("/payment-config", verifyToken, isAdmin, updatePaymentConfig);
+router.put("/payment-config", verifyToken, isAdmin, updatePaymentConfig);
 
 // Withdraw API
 router.post("/withdraw", verifyToken, isAdmin, withdraw);
@@ -47,6 +50,8 @@ router.post("/link-shortcut", verifyToken, isAdmin, createLinkShortcut);
 // Missions
 router.get("/missions", verifyToken, isAdmin, getMissions);
 router.post("/missions", verifyToken, isAdmin, createMission);
+router.put("/missions/:id", verifyToken, isAdmin, updateMission);
+router.delete("/missions/:id", verifyToken, isAdmin, deleteMission);
 
 // User management routes
 router.get("/users", verifyToken, isAdmin, getAllUsers);

@@ -72,9 +72,15 @@ export const createGiftToken = async (req, res) => {
 
     // Create log
     await Log.create({
-      user: req.user.userId,
       action: "CREATE_GIFT_TOKEN",
-      description: `Tạo mã quà tặng: ${giftToken.code} (${giftToken.coins} xu, tối đa ${giftToken.maxUses} lần)`,
+      message: `Tạo mã quà tặng: ${giftToken.code} (${giftToken.coins} xu, tối đa ${giftToken.maxUses} lần)`,
+      source: "backend",
+      userId: req.user.userId,
+      meta: {
+        giftTokenId: giftToken._id,
+        coins: giftToken.coins,
+        maxUses: giftToken.maxUses,
+      },
     });
 
     res.status(201).json({
@@ -128,11 +134,13 @@ export const toggleGiftToken = async (req, res) => {
 
     // Create log
     await Log.create({
-      user: req.user.userId,
       action: "TOGGLE_GIFT_TOKEN",
-      description: `${
+      message: `${
         giftToken.isEnabled ? "Kích hoạt" : "Vô hiệu hóa"
       } mã quà tặng: ${giftToken.code}`,
+      source: "backend",
+      userId: req.user.userId,
+      meta: { giftTokenId: giftToken._id, isEnabled: giftToken.isEnabled },
     });
 
     res.json({
@@ -171,9 +179,11 @@ export const deleteGiftToken = async (req, res) => {
 
     // Create log
     await Log.create({
-      user: req.user.userId,
       action: "DELETE_GIFT_TOKEN",
-      description: `Xóa mã quà tặng: ${giftToken.code}`,
+      message: `Xóa mã quà tặng: ${giftToken.code}`,
+      source: "backend",
+      userId: req.user.userId,
+      meta: { giftTokenId: id },
     });
 
     res.json({

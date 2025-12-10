@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Log from "../models/Log.js";
+import UserMission from "../models/UserMission.js";
 import PaymentConfig from "../models/PaymentConfig.js";
 
 // @desc    Get dashboard statistics
@@ -21,10 +22,11 @@ export const getDashboardStats = async (req, res) => {
     ]);
     const totalCoins = usersWithCoins[0]?.totalCoins || 0;
 
-    // Xu được phát trong 24h (từ logs)
+    // Xu được phát trong 24h (từ logs) and previous 24h for change calculation
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const twoDayAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
-    const coinsLast24h = await Log.aggregate([
+    const coinsLast24hAgg = await Log.aggregate([
       {
         $match: {
           timestamp: { $gte: oneDayAgo },
@@ -38,7 +40,24 @@ export const getDashboardStats = async (req, res) => {
         },
       },
     ]);
-    const coinsDistributed24h = coinsLast24h[0]?.totalCoins || 0;
+    const coinsDistributed24h = coinsLast24hAgg[0]?.totalCoins || 0;
+
+    // previous 24h window (24-48h ago)
+    const coinsPrev24hAgg = await Log.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: twoDayAgo, $lt: oneDayAgo },
+          "meta.coins": { $exists: true },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalCoins: { $sum: "$meta.coins" },
+        },
+      },
+    ]);
+    const coinsPrev24h = coinsPrev24hAgg[0]?.totalCoins || 0;
 
     // Users mới trong 24h
     const newUsersLast24h = await User.countDocuments({
@@ -65,8 +84,16 @@ export const getDashboardStats = async (req, res) => {
       },
       coinsDistributed24h: {
         value: coinsDistributed24h,
-        change: Math.floor(coinsDistributed24h * 0.15), // Mock 15% tăng
-        changePercent: "15.0",
+        change: coinsDistributed24h - coinsPrev24h,
+        changePercent:
+          coinsPrev24h > 0
+            ? (
+                ((coinsDistributed24h - coinsPrev24h) / coinsPrev24h) *
+                100
+              ).toFixed(1)
+            : coinsDistributed24h > 0
+            ? "100.0"
+            : "0.0",
       },
     };
 
@@ -97,14 +124,21 @@ export const getTopUsers = async (req, res) => {
       .limit(Number(limit))
       .lean();
 
-    // Thêm thông tin rank và missions (mock cho demo)
-    const usersWithRank = topUsers.map((user, index) => ({
-      ...user,
-      rank: index + 1,
-      missions: Math.floor(Math.random() * 100) + 50, // Mock missions
-      lastActive: getTimeAgo(user.updatedAt),
-      badge: getBadge(user.coins),
-    }));
+    // Thêm thông tin rank và missions (thực tế)
+    const usersWithRank = await Promise.all(
+      topUsers.map(async (user, index) => {
+        const missionsCount = await UserMission.countDocuments({
+          user: user._id,
+        });
+        return {
+          ...user,
+          rank: index + 1,
+          missions: missionsCount,
+          lastActive: getTimeAgo(user.updatedAt),
+          badge: getBadge(user.coins),
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
@@ -227,27 +261,50 @@ function determineLogType(message, meta) {
 // @access  Private/Admin
 export const getPaymentConfig = async (req, res) => {
   try {
-    let config = await PaymentConfig.findOne().lean();
+    const type = req.query.type || "recharge-card";
+
+    let config = await PaymentConfig.findOne({ type }).lean();
 
     if (!config) {
-      // Create default config if not exists
+      // Create default config for this type
+      const defaultDiscount = 70;
       config = await PaymentConfig.create({
+        type,
         provider: "TheNapVip.Com",
         partnerId: "",
         partnerKey: "",
+        walletNumber: "",
         cardDiscount: {
-          VIETTEL: 70,
-          MOBIFONE: 70,
-          VINAPHONE: 70,
+          VIETTEL: defaultDiscount,
+          MOBIFONE: defaultDiscount,
+          VINAPHONE: defaultDiscount,
+          ZING: defaultDiscount,
+          GATE: defaultDiscount,
+          GARENA: defaultDiscount,
         },
         updatedBy: req.user.id,
       });
     }
-
-    res.status(200).json({
-      success: true,
-      data: config,
-    });
+    // Ensure cardDiscount contains all known providers before returning
+    const providers = [
+      "VIETTEL",
+      "MOBIFONE",
+      "VINAPHONE",
+      "ZING",
+      "GATE",
+      "GARENA",
+    ];
+    if (!config.cardDiscount || typeof config.cardDiscount !== "object")
+      config.cardDiscount = {};
+    const existingValues = Object.values(config.cardDiscount).filter(
+      (v) => typeof v === "number"
+    );
+    const fallback = existingValues.length ? existingValues[0] : 70;
+    for (const p of providers) {
+      if (typeof config.cardDiscount[p] === "undefined")
+        config.cardDiscount[p] = fallback;
+    }
+    res.status(200).json({ success: true, data: config });
   } catch (error) {
     console.error("❌ Error getting payment config:", error);
     res.status(500).json({
@@ -263,22 +320,95 @@ export const getPaymentConfig = async (req, res) => {
 // @access  Private/Admin
 export const updatePaymentConfig = async (req, res) => {
   try {
-    const { partnerId, partnerKey, cardDiscount } = req.body;
+    const { partnerId, partnerKey, cardDiscount, walletNumber, type } =
+      req.body;
+    const cfgType = type || req.query.type || "recharge-card";
 
-    let config = await PaymentConfig.findOne();
+    // Try to find existing config by type
+    let config = await PaymentConfig.findOne({ type: cfgType });
 
     if (!config) {
+      // Normalize cardDiscount: allow number or object
+      let cardDiscountPayload = cardDiscount;
+      if (
+        typeof cardDiscount === "number" ||
+        typeof cardDiscount === "string"
+      ) {
+        const v = Number(cardDiscount) || 0;
+        cardDiscountPayload = {
+          VIETTEL: v,
+          MOBIFONE: v,
+          VINAPHONE: v,
+          ZING: v,
+          GATE: v,
+          GARENA: v,
+        };
+      }
+
+      // create new config for this type
       config = await PaymentConfig.create({
+        type: cfgType,
         provider: "TheNapVip.Com",
         partnerId,
         partnerKey,
-        cardDiscount,
+        walletNumber,
+        cardDiscount: cardDiscountPayload,
         updatedBy: req.user.id,
       });
     } else {
       config.partnerId = partnerId;
       config.partnerKey = partnerKey;
-      config.cardDiscount = cardDiscount;
+      config.walletNumber = walletNumber || config.walletNumber;
+
+      // If cardDiscount is a number/string, preserve existing keys and set them to this value
+      if (
+        typeof cardDiscount === "number" ||
+        typeof cardDiscount === "string"
+      ) {
+        const v = Number(cardDiscount) || 0;
+        if (config.cardDiscount && typeof config.cardDiscount === "object") {
+          for (const k of Object.keys(config.cardDiscount)) {
+            config.cardDiscount[k] = v;
+          }
+        } else {
+          config.cardDiscount = {
+            VIETTEL: v,
+            MOBIFONE: v,
+            VINAPHONE: v,
+            ZING: v,
+            GATE: v,
+            GARENA: v,
+          };
+        }
+      } else if (cardDiscount && typeof cardDiscount === "object") {
+        // If an object is provided, merge keys (overwrite existing ones)
+        config.cardDiscount = {
+          ...(config.cardDiscount || {}),
+          ...cardDiscount,
+        };
+      }
+      // Ensure all known provider keys exist on cardDiscount
+      const providers = [
+        "VIETTEL",
+        "MOBIFONE",
+        "VINAPHONE",
+        "ZING",
+        "GATE",
+        "GARENA",
+      ];
+      if (!config.cardDiscount || typeof config.cardDiscount !== "object") {
+        config.cardDiscount = {};
+      }
+      // choose fallback value from one of existing keys or 0
+      const existingValues = Object.values(config.cardDiscount).filter(
+        (v) => typeof v === "number"
+      );
+      const fallback = existingValues.length ? existingValues[0] : 0;
+      for (const p of providers) {
+        if (typeof config.cardDiscount[p] === "undefined")
+          config.cardDiscount[p] = fallback;
+      }
+
       config.updatedBy = req.user.id;
       await config.save();
     }
@@ -293,7 +423,9 @@ export const updatePaymentConfig = async (req, res) => {
       userEmail: req.user.email,
       meta: {
         type: "payment_config",
+        cfgType,
         partnerId,
+        walletNumber,
         cardDiscount,
       },
     });

@@ -4,6 +4,7 @@ import {
   register,
   login,
   getMe,
+  getMyDashboard,
   updateProfile,
 } from "../controllers/authController.js";
 import { verifyToken } from "../middleware/auth.js";
@@ -46,6 +47,7 @@ const profileUpdateValidation = [
 router.post("/register", registerValidation, validate, register);
 router.post("/login", loginValidation, validate, login);
 router.get("/me", verifyToken, getMe);
+router.get("/me/dashboard", verifyToken, getMyDashboard);
 router.put(
   "/profile",
   verifyToken,

@@ -31,7 +31,6 @@ const menuItems: MenuItem[] = [
   { path: '/dashboard', label: 'Trang chủ', icon: <Home size={20} /> },
   { path: '/dashboard/profile', label: 'Hồ sơ', icon: <User size={20} /> },
   { path: '/dashboard/daily-checkin', label: 'Điểm danh mỗi ngày', icon: <Calendar size={20} /> },
-  { path: '/dashboard/game-card', label: 'Nhận thẻ game', icon: <CreditCard size={20} /> },
   { path: '/dashboard/missions', label: 'Nhiệm vụ', icon: <Target size={20} /> },
   { path: '/dashboard/invite-friends', label: 'Mời bạn bè', icon: <Users size={20} /> },
   { path: '/dashboard/exchange-account', label: 'Đổi ACC', icon: <RefreshCw size={20} /> },

@@ -9,12 +9,14 @@ import logRoutes from "./routes/logRoutes.js";
 import checkInRoutes from "./routes/checkInRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import cardRoutes from "./routes/cardRoutes.js";
+import { cardCallback } from "./controllers/cardController.js";
 import giftTokenRoutes from "./routes/giftTokenRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import accountListingRoutes from "./routes/accountListingRoutes.js";
 import apiProviderRoutes from "./routes/apiProviderRoutes.js";
 import linkShortenerRoutes from "./routes/linkShortenerRoutes.js";
 import missionRoutes from "./routes/missionRoutes.js";
+import publicRoutes from "./routes/publicRoutes.js";
 
 import { errorHandler } from "./middleware/errorHandler.js";
 import {
@@ -46,13 +48,41 @@ app.use(
 // Session configuration
 app.use(session(userSessionConfig));
 
-// CORS
-app.use(
-  cors({
-    origin: config.CLIENT_URL,
-    credentials: true,
-  })
-);
+// Handle Private Network Access preflight requests (ngrok -> localhost)
+// Browsers may send `Access-Control-Request-Private-Network: true` on preflight
+// and expect the server to respond with `Access-Control-Allow-Private-Network: true`.
+app.use((req, res, next) => {
+  try {
+    const acrpn = req.headers["access-control-request-private-network"];
+    if (req.method === "OPTIONS" && acrpn === "true") {
+      res.setHeader("Access-Control-Allow-Private-Network", "true");
+    }
+  } catch (e) {
+    // ignore
+  }
+  next();
+});
+
+// CORS: in development allow dynamic origins (so ngrok/public URLs can reach local API).
+const corsOptions =
+  config.NODE_ENV === "production"
+    ? { origin: config.CLIENT_URL, credentials: true }
+    : {
+        origin: true,
+        credentials: true,
+        methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
+        allowedHeaders: [
+          "Content-Type",
+          "Authorization",
+          "X-Requested-With",
+          "Accept",
+          "Access-Control-Request-Method",
+          "Access-Control-Request-Headers",
+          "Access-Control-Request-Private-Network",
+        ],
+      };
+
+app.use(cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -74,6 +104,11 @@ app.use("/api/logs", logRoutes);
 app.use("/api/checkin", checkInRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/card", cardRoutes);
+
+// Public aliases for provider callbacks
+// Some providers expect callback to be at `/card/callback` (root) and may call via GET or POST.
+app.post("/card/callback", cardCallback);
+app.get("/card/callback", cardCallback);
 app.use("/api/admin", giftTokenRoutes);
 app.use("/api/admin", settingsRoutes);
 app.use("/api/admin", accountListingRoutes);
@@ -81,6 +116,7 @@ app.use("/api/admin", accountListingRoutes);
 app.use("/api/admin", apiProviderRoutes);
 app.use("/api", linkShortenerRoutes);
 app.use("/api/missions", missionRoutes);
+app.use("/api/public", publicRoutes);
 app.use("/api/admin/order-disputes", orderDisputeRoutes);
 
 // Error handler middleware (should be last)

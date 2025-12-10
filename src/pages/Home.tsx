@@ -1,21 +1,104 @@
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { TrendingUp, Users, Coins, Target } from 'lucide-react';
+import { TrendingUp, Users, Coins, Target, Loader2 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+interface ActivityItem {
+  id: string;
+  type: string;
+  user: string;
+  action: string;
+  amount: string;
+  time: string;
+  status: string;
+}
 
 export default function Home() {
-  const stats = [
-    { label: 'Tổng xu', value: '1,250', icon: <Coins size={24} />, trend: '+12%' },
-    { label: 'Nhiệm vụ hoàn thành', value: '24/30', icon: <Target size={24} />, trend: '+5' },
-    { label: 'Người dùng online', value: '2,456', icon: <Users size={24} />, trend: '+8%' },
-    { label: 'Xếp hạng', value: '#42', icon: <TrendingUp size={24} />, trend: '+3' },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [coins, setCoins] = useState<number>(0);
+  const [missionsCompleted, setMissionsCompleted] = useState<number>(0);
+  const [totalMissions, setTotalMissions] = useState<number>(0);
+  const [usersOnline, setUsersOnline] = useState<number>(0);
+  const [rank, setRank] = useState<number | null>(null);
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
 
-  const recentActivities = [
-    { id: 1, title: 'Hoàn thành nhiệm vụ "Đăng nhập 7 ngày"', time: '5 phút trước', coins: '+50 xu' },
-    { id: 2, title: 'Nhận thẻ game Garena 50k', time: '1 giờ trước', coins: '-500 xu' },
-    { id: 3, title: 'Mời thành công 1 bạn bè', time: '2 giờ trước', coins: '+100 xu' },
-    { id: 4, title: 'Thắng Mini game - Vòng quay may mắn', time: '3 giờ trước', coins: '+30 xu' },
+  useEffect(() => {
+    fetchUserDashboard();
+  }, []);
+
+  const fetchUserDashboard = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Vui lòng đăng nhập để xem dashboard');
+        setLoading(false);
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/auth/me/dashboard`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || 'Không thể tải dữ liệu');
+      }
+
+      const data = await res.json();
+      const d = data.data;
+
+      setCoins(d.coins || 0);
+      setMissionsCompleted(d.missionsCompleted || 0);
+      setTotalMissions(d.totalMissions || 0);
+      setUsersOnline(d.usersOnline || 0);
+      setRank(d.rank || null);
+      setRecentActivities(d.recentActivities || []);
+    } catch (err) {
+      console.error('Error fetching user dashboard:', err);
+      setError(err instanceof Error ? err.message : 'Có lỗi xảy ra');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
+        <PageHeader title="Trang chủ" description="Chào mừng bạn trở lại!" />
+        <div className="flex items-center justify-center h-48">
+          <Loader2 className="animate-spin text-blue-500" size={36} />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
+        <PageHeader title="Trang chủ" description="Chào mừng bạn trở lại!" />
+        <Card className="border-red-500/20 bg-red-500/10">
+          <p className="text-red-400">{error}</p>
+          <Button className="mt-4" onClick={fetchUserDashboard}>Thử lại</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  const stats = [
+    { label: 'Tổng xu', value: coins.toLocaleString(), icon: <Coins size={24} />, trend: '' },
+    { label: 'Nhiệm vụ đã hoàn thành', value: (missionsCompleted || 0).toLocaleString(), icon: <Target size={24} />, trend: '' },
+    { label: 'Người dùng online', value: usersOnline.toLocaleString(), icon: <Users size={24} />, trend: '' },
+    { label: 'Xếp hạng', value: rank ? `#${rank}` : '-', icon: <TrendingUp size={24} />, trend: '' },
   ];
 
   return (
@@ -62,10 +145,10 @@ export default function Home() {
             {recentActivities.map((activity) => (
               <div key={activity.id} className="flex items-start justify-between pb-4 border-b border-neutral-800 last:border-0 last:pb-0">
                 <div className="flex-1">
-                  <p className="text-sm mb-1">{activity.title}</p>
+                  <p className="text-sm mb-1">{activity.action}</p>
                   <p className="text-xs text-neutral-500">{activity.time}</p>
                 </div>
-                <span className="text-sm text-green-500">{activity.coins}</span>
+                <span className={`text-sm ${activity.amount.startsWith('+') ? 'text-green-500' : 'text-orange-400'}`}>{activity.amount}</span>
               </div>
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -6,66 +6,228 @@ import { Trophy, Zap, Lock, Shield, Flame } from 'lucide-react';
 
 export default function Missions() {
   const [activeTab, setActiveTab] = useState('top3');
+  const [missions, setMissions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState<Record<string, boolean>>({});
+  const [startedIds, setStartedIds] = useState<Record<string, boolean>>({});
+  const [completedIds, setCompletedIds] = useState<Record<string, boolean>>({});
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [modalMissionId, setModalMissionId] = useState<string | null>(null);
+  const [modalCode, setModalCode] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalLoading, setModalLoading] = useState(false);
+  const [antiBotModalVisible, setAntiBotModalVisible] = useState(false);
+  const [antiBotIp, setAntiBotIp] = useState<string | null>(null);
+  const [antiBotUrl, setAntiBotUrl] = useState<string | null>(null);
+  const [antiBotMissionId, setAntiBotMissionId] = useState<string | null>(null);
+  const [antiBotCountdown, setAntiBotCountdown] = useState<number>(5);
 
-  // Thống kê header
+  // Thống kê header (computed from missions)
   const stats = {
-    currentMissions: 20,
-    totalMissions: 20,
+    currentMissions: missions.filter(m => m.status === 'active').length || 0,
+    totalMissions: missions.length || 0,
     ipLocked: 0,
     vpnLocked: 0,
-    totalReward: 5250
+    totalReward: missions.reduce((s, m) => s + (Number(m.reward) || 0), 0) || 0,
   };
 
-  // Top 3 nhiệm vụ nhiều xu nhất
-  const topMissions = [
-    {
-      id: 9,
-      title: 'NV 9 — Nhiệm vụ 9',
-      reward: 350,
-      type: 'XU CAO',
-      status: 'active',
-      resetTime: '00:00',
-      antiBot: true,
-      description: 'Sau khi nhập token, nhiệm vụ sẽ mở lại lúc 00:00 (giờ VN).',
-      rank: 1
-    },
-    {
-      id: 10,
-      title: 'NV 10 — Nhiệm vụ 10',
-      reward: 350,
-      type: 'XU CAO',
-      status: 'active',
-      resetTime: '00:00',
-      antiBot: true,
-      description: 'Sau khi nhập token, nhiệm vụ sẽ mở lại lúc 00:00 (giờ VN).',
-      rank: 2
-    },
-    {
-      id: 1,
-      title: 'NV 1 — Nhiệm vụ 1',
-      reward: 300,
-      type: 'XU CAO',
-      status: 'active',
-      resetTime: '00:00',
-      antiBot: true,
-      description: 'Sau khi nhập token, nhiệm vụ sẽ mở lại lúc 00:00 (giờ VN).',
-      rank: 3
-    }
-  ];
+  // Top 3 nhiệm vụ nhiều xu nhất (computed)
+  const topMissions = missions
+    .filter(m => m.status === 'active')
+    .sort((a, b) => (Number(b.reward) || 0) - (Number(a.reward) || 0))
+    .slice(0, 3)
+    .map((m, idx) => ({ ...m, rank: idx + 1, title: m.name || m.title || `NV ${m._id}` }));
 
-  // Tất cả nhiệm vụ
-  const allMissions = [
-    ...topMissions,
-    { id: 3, title: 'NV 3 — Nhiệm vụ 3', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 4, title: 'NV 4 — Nhiệm vụ 4', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 5, title: 'NV 5 — Nhiệm vụ 5', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 6, title: 'NV 6 — Nhiệm vụ 6', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 11, title: 'NV 11 — Nhiệm vụ 11', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 13, title: 'NV 13 — Nhiệm vụ 13', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 14, title: 'NV 14 — Nhiệm vụ 14', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 18, title: 'NV 18 — Nhiệm vụ 18', reward: 300, type: 'XU CAO', status: 'active', resetTime: '00:00', antiBot: true },
-    { id: 7, title: 'NV 7 — Nhiệm vụ 7', reward: 250, type: 'XU NGON', status: 'active', resetTime: '00:00', antiBot: true },
-  ];
+  // All missions (fetched)
+  const allMissions = missions.map(m => ({
+    id: m._id,
+    title: m.name || m.title || `NV ${m._id}`,
+    description: m.description,
+    reward: m.reward,
+    status: m.status,
+    provider: m.provider,
+    url: m.url,
+    shortcut: m.shortcut,
+    requiresCode: !!m.requiresCode,
+    uses: m.uses,
+    maxUses: m.maxUses,
+  }));
+
+  useEffect(() => {
+    const fetchMissions = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/missions');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data && Array.isArray(data.missions)) {
+          setMissions(data.missions);
+        } else {
+          setMissions([]);
+        }
+        // if user is logged in, fetch statuses
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            const sres = await fetch('/api/missions/status', { headers: { Authorization: `Bearer ${token}` } });
+            if (sres.ok) {
+              const sd = await sres.json();
+              const statuses = sd.statuses || {};
+              const startedMap: Record<string, boolean> = {};
+              const completedMap: Record<string, boolean> = {};
+              Object.keys(statuses).forEach(k => {
+                if (statuses[k] === 'started') startedMap[k] = true;
+                if (statuses[k] === 'completed') completedMap[k] = true;
+              });
+              setStartedIds(prev => ({ ...prev, ...startedMap }));
+              setCompletedIds(prev => ({ ...prev, ...completedMap }));
+            }
+          } catch (e) {
+            console.warn('Failed to fetch mission statuses', e);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load missions:', err);
+        setMissions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMissions();
+    // refresh statuses when window gains focus
+    const onFocus = () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      fetch('/api/missions/status', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(sd => {
+          if (!sd) return;
+          const statuses = sd.statuses || {};
+          const startedMap: Record<string, boolean> = {};
+          const completedMap: Record<string, boolean> = {};
+          Object.keys(statuses).forEach(k => {
+            if (statuses[k] === 'started') startedMap[k] = true;
+            if (statuses[k] === 'completed') completedMap[k] = true;
+          });
+          setStartedIds(prev => ({ ...prev, ...startedMap }));
+          setCompletedIds(prev => ({ ...prev, ...completedMap }));
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  const closeModal = () => {
+    setShowCodeModal(false);
+    setModalMissionId(null);
+    setModalCode('');
+    setModalMessage('');
+    setModalLoading(false);
+  };
+
+  // Helper: fetch client IP (tries ipify.org)
+  const fetchClientIp = async () => {
+    try {
+      const r = await fetch('https://api.ipify.org?format=json');
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j.ip || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const handleStart = async (mission: any) => {
+    const id = mission.id || mission._id;
+    if (starting[id]) return;
+    setStarting(prev => ({ ...prev, [id]: true }));
+    setAntiBotMissionId(id);
+    setAntiBotUrl(mission.shortcut || mission.url || null);
+    setAntiBotModalVisible(true);
+    setAntiBotCountdown(5);
+
+    // fetch IP for display
+    const ip = await fetchClientIp();
+    setAntiBotIp(ip);
+
+    // call start API immediately to reserve IP
+    const token = localStorage.getItem('token');
+    let res = null;
+    try {
+      res = await fetch(`/api/missions/${id}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = data && data.message ? data.message : `Lỗi: ${res.status}`;
+        alert(msg);
+        setAntiBotModalVisible(false);
+        setStarting(prev => ({ ...prev, [id]: false }));
+        return;
+      }
+      // server responded OK; do not change "started" UI state — keep button as 'Bắt đầu' unless completed
+      try {
+        const j = await res.json().catch(() => null);
+        if (j && j.message && j.message.includes('hoàn thành')) {
+          setCompletedIds(prev => ({ ...prev, [id]: true }));
+        }
+      } catch {}
+    } catch (err) {
+      console.error('Start mission failed', err);
+      alert('Không thể bắt đầu nhiệm vụ');
+      setAntiBotModalVisible(false);
+      setStarting(prev => ({ ...prev, [id]: false }));
+      return;
+    }
+
+    // countdown visuals for 5s then open mission URL
+    let sec = 5;
+    setAntiBotCountdown(sec);
+    const iv = setInterval(() => {
+      sec -= 1;
+      setAntiBotCountdown(sec);
+      if (sec <= 0) {
+        clearInterval(iv);
+        try {
+          if (antiBotUrl) window.open(antiBotUrl, '_blank');
+        } catch (e) {}
+        setTimeout(() => {
+          setAntiBotModalVisible(false);
+        }, 400);
+        setStarting(prev => ({ ...prev, [id]: false }));
+      }
+    }, 1000);
+  };
+
+  const handleConfirmCode = async () => {
+    if (!modalMissionId) return;
+    try {
+      setModalLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/missions/${modalMissionId}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ code: modalCode })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setModalMessage(data && data.message ? data.message : `Lỗi: ${res.status}`);
+      } else {
+        setModalMessage('Claim thành công!');
+        // mark mission as completed in UI
+        setCompletedIds(prev => ({ ...prev, [modalMissionId]: true }));
+        // close after short delay
+        setTimeout(() => closeModal(), 900);
+      }
+    } catch (err) {
+      console.error('Verify code failed', err);
+      setModalMessage('Có lỗi khi xác thực mã');
+    } finally {
+      setModalLoading(false);
+    }
+  };
 
   const MissionCard = ({ mission, showRank = false }: { mission: typeof allMissions[0], showRank?: boolean }) => (
     <Card className="bg-neutral-900 border-neutral-700">
@@ -80,13 +242,24 @@ export default function Missions() {
       <p className="text-xs text-neutral-400 mb-4">{mission.description || 'Sau khi nhập token, nhiệm vụ sẽ mở lại lúc 00:00 (giờ VN).'}</p>
 
       <div className="flex items-center gap-2 mb-4">
-        <Button size="sm" className="flex-1 bg-blue-500 hover:bg-blue-600 text-black font-semibold">
-          Bắt đầu
+        <Button size="sm" className="flex-1 bg-blue-500 hover:bg-blue-600 text-black font-semibold" disabled={completedIds[mission.id || mission._id]} onClick={() => handleStart(mission)}>
+          {completedIds[mission.id || mission._id] ? 'Đã hoàn thành' : (starting[mission.id || mission._id] ? 'Đang bắt đầu...' : 'Bắt đầu')}
         </Button>
         <Button size="sm" variant="outline" className="flex-1 border-neutral-600 text-neutral-400">
           <Shield size={16} />
           Hướng dẫn
         </Button>
+        {mission.requiresCode ? (
+          <Button size="sm" variant="ghost" className="border-neutral-700 text-neutral-300" onClick={() => {
+            const id = mission.id || mission._id;
+            setModalMissionId(id);
+            setModalCode('');
+            setModalMessage('');
+            setShowCodeModal(true);
+          }}>
+            Nhập mã
+          </Button>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between text-xs">
@@ -164,7 +337,7 @@ export default function Missions() {
 
         <div className="space-y-3">
           {topMissions.map((mission) => (
-            <div key={mission.id} className="relative">
+            <div key={mission.id || mission._id} className="relative">
               <div className="absolute -left-3 top-4 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold z-10"
                 style={{
                   background: mission.rank === 1 ? 'linear-gradient(135deg, #FFD700, #FFA500)' :
@@ -185,10 +358,50 @@ export default function Missions() {
 
       {/* All Missions Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {allMissions.map((mission) => (
-          <MissionCard key={mission.id} mission={mission} />
-        ))}
+        {loading ? (
+          <div className="col-span-full text-center text-neutral-400">Đang tải nhiệm vụ...</div>
+        ) : allMissions.length === 0 ? (
+          <div className="col-span-full text-center text-neutral-400">Không có nhiệm vụ nào.</div>
+        ) : (
+          allMissions.map((mission) => (
+            <MissionCard key={mission.id} mission={mission} />
+          ))
+        )}
       </div>
+
+      {/* Code entry modal */}
+      {/* Anti-bot loading modal */}
+      {antiBotModalVisible && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={() => {}}></div>
+          <div className="relative w-full max-w-lg p-6 bg-neutral-900 border border-neutral-700 rounded-lg z-10 text-center">
+            <h3 className="text-xl font-bold uppercase text-red-400 mb-4">HỆ THỐNG ANTI BOT</h3>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full border-4 border-t-transparent border-white/20 animate-spin inline-block" style={{ borderTopColor: '#60A5FA' }}></div>
+              <div className="text-lg font-mono tracking-wider text-white">{antiBotCountdown > 0 ? '' : '...'} </div>
+              <div className="text-sm text-neutral-300">IP của bạn là: <span className="font-semibold text-yellow-300">{antiBotIp || 'Đang lấy...'}</span></div>
+              <div className="text-sm text-neutral-400">VUI LÒNG CHỜ TRONG GIÂY LÁT VÀ NHIỆM VỤ SẼ ĐƯỢC BẮT ĐẦU</div>
+              <div className="text-xs text-neutral-500 mt-2">Chuyển tiếp sau: <span className="font-bold text-white">{antiBotCountdown}s</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showCodeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={closeModal}></div>
+          <div className="relative w-full max-w-md p-6 bg-neutral-900 border border-neutral-700 rounded-lg z-10">
+            <h3 className="text-lg font-semibold mb-3">Nhập mã xác nhận</h3>
+            <p className="text-sm text-neutral-400 mb-3">Nhập mã bạn nhận được từ nhà cung cấp để xác nhận nhiệm vụ.</p>
+            <label className="block text-sm mb-2">Mã xác nhận</label>
+            <input value={modalCode} onChange={e => setModalCode(e.target.value)} className="w-full px-3 py-2 rounded bg-neutral-800 border border-neutral-700 text-white mb-3" />
+            {modalMessage && <div className="text-sm text-yellow-300 mb-3">{modalMessage}</div>}
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={closeModal} disabled={modalLoading}>Hủy</Button>
+              <Button onClick={handleConfirmCode} disabled={modalLoading}>{modalLoading ? 'Đang xử lý...' : 'Xác nhận'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

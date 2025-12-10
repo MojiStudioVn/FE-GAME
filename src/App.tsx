@@ -34,6 +34,7 @@ import AdminPaymentSettings from './pages/admin/PaymentSettings';
 import AdminGiftTokens from './pages/admin/GiftTokens';
 import APIProviders from './pages/admin/APIProviders';
 import AdminMissions from './pages/admin/AdminMissions';
+import NotFound from './pages/NotFound';
 import './styles/globals.css';
 
 export default function App() {
@@ -115,9 +116,9 @@ function AppRoutes() {
             )
           } />
 
-          {/* Redirect all other routes to landing */}
+          {/* Unknown routes --> show 404 page */}
           <Route path="/mission-landing/:id" element={<MissionLanding />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
     </ToastProvider>

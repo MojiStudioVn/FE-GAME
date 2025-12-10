@@ -1,6 +1,9 @@
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
+import UserMission from "../models/UserMission.js";
+import Mission from "../models/Mission.js";
+import Log from "../models/Log.js";
 import { config } from "../config/env.js";
 
 // Generate JWT Token
@@ -161,6 +164,94 @@ export const getMe = async (req, res, next) => {
         avatar: user.avatar,
         isVerified: user.isVerified,
         createdAt: user.createdAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get current user dashboard (personalized)
+// @route   GET /api/auth/me/dashboard
+// @access  Private
+export const getMyDashboard = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy người dùng" });
+    }
+
+    const coins = user.coins || 0;
+
+    // Missions completed by this user
+    const missionsCompleted = await UserMission.countDocuments({
+      user: userId,
+    });
+
+    // Total missions in system (used as the denominator for progress)
+    const totalMissions = await Mission.countDocuments();
+
+    // Users online approximation: users active in last 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const usersOnline = await User.countDocuments({
+      updatedAt: { $gte: fiveMinutesAgo },
+    });
+
+    // Rank by coins (1 = highest)
+    const higherCount = await User.countDocuments({ coins: { $gt: coins } });
+    const rank = higherCount + 1;
+
+    // Recent activities for this user (from logs)
+    // Search common fields and also meta.* fields in case logs store user info there
+    const recentLogs = await Log.find({
+      $or: [
+        { userId: userId },
+        { userEmail: user.email },
+        { "meta.userId": userId },
+        { "meta.userEmail": user.email },
+        { "meta.user": user.username },
+      ],
+    })
+      .sort({ timestamp: -1 })
+      .limit(10)
+      .lean();
+
+    const formattedLogs = recentLogs.map((log) => {
+      const coinsMeta = log.meta?.coins || 0;
+      return {
+        id: log._id,
+        type: (log.meta && log.meta.type) || (log.message || "").toLowerCase(),
+        user: log.userId?.username || log.userEmail || "System",
+        action: log.message,
+        amount:
+          coinsMeta !== 0 ? `${coinsMeta > 0 ? "+" : ""}${coinsMeta} xu` : "",
+        time: (() => {
+          const seconds = Math.floor(
+            (Date.now() - new Date(log.timestamp)) / 1000
+          );
+          if (seconds < 60) return `${seconds} giây trước`;
+          if (seconds < 3600) return `${Math.floor(seconds / 60)} phút trước`;
+          if (seconds < 86400) return `${Math.floor(seconds / 3600)} giờ trước`;
+          return `${Math.floor(seconds / 86400)} ngày trước`;
+        })(),
+        status:
+          log.level === "error" ? "failed" : log.meta?.status || "success",
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        coins,
+        missionsCompleted,
+        totalMissions,
+        usersOnline,
+        rank,
+        recentActivities: formattedLogs,
       },
     });
   } catch (error) {

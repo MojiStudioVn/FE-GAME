@@ -154,6 +154,15 @@
   }
 }
 
+/* Hide scrollbar for elements with .no-scrollbar */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

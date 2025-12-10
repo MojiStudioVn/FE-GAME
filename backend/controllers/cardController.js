@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import axios from "axios";
 import CardTransaction from "../models/CardTransaction.js";
+import CardPurchase from "../models/CardPurchase.js";
 import User from "../models/User.js";
 import Log from "../models/Log.js";
 import PaymentConfig from "../models/PaymentConfig.js";
@@ -25,6 +26,12 @@ const generateSign = (partnerKey, code, serial) => {
   return crypto.createHash("md5").update(data).digest("hex");
 };
 
+// Generate MD5 for buycard: md5(partner_key + partner_id + command + request_id)
+const generateBuySign = (partnerKey, partnerId, command, requestId) => {
+  const data = `${partnerKey}${partnerId}${command}${requestId}`;
+  return crypto.createHash("md5").update(data).digest("hex");
+};
+
 // @desc    Submit card to charging system
 // @route   POST /api/card/charge
 // @access  Private
@@ -40,8 +47,12 @@ export const chargeCard = async (req, res) => {
       });
     }
 
-    // Validate telco
-    if (!["VIETTEL", "MOBIFONE", "VINAPHONE"].includes(telco)) {
+    // Validate telco - allow additional providers (ZING, GATE, GARENA)
+    if (
+      !["VIETTEL", "MOBIFONE", "VINAPHONE", "ZING", "GATE", "GARENA"].includes(
+        telco
+      )
+    ) {
       return res.status(400).json({
         success: false,
         message: "Nhà mạng không hợp lệ",
@@ -93,15 +104,18 @@ export const chargeCard = async (req, res) => {
         }
       );
 
-      // Update transaction with response
+      // Update transaction with response (normalize status to Number)
+      const respStatus = Number(response?.data?.status);
       transaction.transId = response.data.trans_id;
-      transaction.status = response.data.status;
-      transaction.message = response.data.message;
+      transaction.status = isNaN(respStatus) ? response.data.status : respStatus;
+      transaction.message = response.data.message || "";
       await transaction.save();
 
       // Create log
       await Log.create({
         action: "charge_card",
+        message: `Gửi thẻ: request ${requestId} - telco ${telco}`,
+        source: "backend",
         userId: req.user.id,
         userName: req.user.username,
         userEmail: req.user.email,
@@ -114,6 +128,21 @@ export const chargeCard = async (req, res) => {
         },
       });
 
+      // If provider returned a non-success status, report that as an error to client
+      // Common successful statuses are 1 (correct value) or 2 (wrong value but accepted)
+      if (respStatus !== 1 && respStatus !== 2) {
+        return res.status(502).json({
+          success: false,
+          message: response.data.message || "Nhà cung cấp trả lỗi",
+          data: {
+            requestId,
+            transId: response.data.trans_id,
+            status: response.data.status,
+          },
+        });
+      }
+
+      // success path
       res.status(200).json({
         success: true,
         message: "Gửi thẻ thành công",
@@ -153,59 +182,99 @@ export const chargeCard = async (req, res) => {
 // @access  Public (but verified by signature)
 export const cardCallback = async (req, res) => {
   try {
-    const {
-      status,
-      message,
-      request_id,
-      declared_value,
-      value,
-      card_value,
-      amount,
-      code,
-      serial,
-      telco,
-      trans_id,
-      callback_sign,
-    } = req.body;
+      // Some providers call back with GET (query) instead of POST (body).
+      // Merge both so we can handle either case and avoid destructuring undefined.
+      const payload = { ...(req.body || {}), ...(req.query || {}) };
+
+      const {
+        status,
+        message,
+        request_id,
+        declared_value,
+        value,
+        card_value,
+        amount,
+        code,
+        serial,
+        telco,
+        trans_id,
+        callback_sign,
+        sign,
+        command,
+      } = payload;
 
     console.log("📥 Card callback received:", req.body);
 
     // Get payment config
     const config = await getPaymentConfig();
 
-    // Verify signature
-    const expectedSign = generateSign(config.partnerKey, code, serial);
-    if (callback_sign !== expectedSign) {
-      console.error("❌ Invalid callback signature");
-      return res.status(403).json({
-        success: false,
-        message: "Invalid signature",
+    // Verify signature - support both charging callbacks (md5(partnerKey+code+serial))
+    // and buy/getbalance callbacks (md5(partnerKey+partnerId+command+request_id)).
+      const receivedSign = callback_sign || sign || payload.callbackSign || payload.callback_sign;
+    const expectedSignCharging =
+      code && serial ? generateSign(config.partnerKey, code, serial) : null;
+    const expectedSignBuy =
+      typeof request_id !== "undefined" && command
+        ? generateBuySign(
+            config.partnerKey || "",
+            config.partnerId || "",
+            command,
+            request_id || ""
+          )
+        : null;
+
+    const signatureValid =
+      (expectedSignCharging && receivedSign === expectedSignCharging) ||
+      (expectedSignBuy && receivedSign === expectedSignBuy);
+
+    if (!signatureValid) {
+      console.error("❌ Invalid callback signature", {
+        receivedSign,
+        expectedSignCharging,
+        expectedSignBuy,
       });
+      return res
+        .status(403)
+        .json({ success: false, message: "Invalid signature" });
     }
 
-    // Find transaction
+    // Try to find a matching CardTransaction or CardPurchase by request_id
     const transaction = await CardTransaction.findOne({
       requestId: request_id,
     });
+    const purchase = await CardPurchase.findOne({ requestId: request_id });
 
-    if (!transaction) {
-      console.error("❌ Transaction not found:", request_id);
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found",
-      });
+    if (!transaction && !purchase) {
+      console.error("❌ Transaction or Purchase not found:", request_id);
+      return res
+        .status(404)
+        .json({ success: false, message: "Transaction not found" });
     }
 
-    // Update transaction
-    transaction.status = status;
-    transaction.message = message;
-    transaction.transId = trans_id;
-    transaction.declaredValue = declared_value;
-    transaction.cardValue = card_value || value;
-    transaction.value = value;
-    transaction.amount = amount;
-    transaction.callbackSign = callback_sign;
-    await transaction.save();
+    // If it's a charging transaction callback, update CardTransaction
+    if (transaction) {
+      transaction.status = status;
+      transaction.message = message;
+      transaction.transId = trans_id;
+      transaction.declaredValue = declared_value;
+      transaction.cardValue = card_value || value;
+      transaction.value = value;
+      transaction.amount = amount;
+      transaction.callbackSign = receivedSign;
+      await transaction.save();
+    }
+
+    // If it's a buy/purchase callback, update CardPurchase
+    if (purchase) {
+      purchase.status = status;
+      purchase.message = message || purchase.message;
+      purchase.transId = trans_id || purchase.transId;
+        purchase.providerResponse = {
+          ...(purchase.providerResponse || {}),
+          ...(payload || {}),
+        };
+      await purchase.save();
+    }
 
     // If success (status 1 or 2), add coins to user based on discount rate
     if (status === 1 || status === 2) {
@@ -229,6 +298,8 @@ export const cardCallback = async (req, res) => {
         // Create log
         await Log.create({
           action: "card_success",
+          message: `Nạp thẻ thành công: request ${request_id} - trans ${trans_id}`,
+          source: "backend",
           userId: user._id,
           userName: user.username,
           userEmail: user.email,
@@ -256,6 +327,8 @@ export const cardCallback = async (req, res) => {
       // Card error
       await Log.create({
         action: "card_error",
+        message: `Lỗi nạp thẻ: request ${request_id} - ${message}`,
+        source: "backend",
         userId: transaction.userId,
         userName: "",
         userEmail: "",
@@ -374,6 +447,141 @@ export const getAllCardTransactions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Không thể lấy danh sách giao dịch",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Buy cards from provider (user-facing)
+// @route   POST /api/card/buy
+// @access  Private (authenticated users)
+export const buyCard = async (req, res) => {
+  try {
+    const { service_code, wallet_number, value, qty, request_id } = req.body;
+
+    if (!service_code || !wallet_number || !value || !qty) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu tham số mua thẻ" });
+    }
+
+    const config = await getPaymentConfig();
+
+    const requestId =
+      request_id && String(request_id).trim() !== ""
+        ? String(request_id)
+        : `${req.user.id}_${Date.now()}`;
+
+    const command = "buycard";
+    const sign = generateBuySign(
+      config.partnerKey || "",
+      config.partnerId || "",
+      command,
+      requestId
+    );
+
+    // Create purchase record (pending)
+    const purchase = await CardPurchase.create({
+      userId: req.user.id,
+      requestId,
+      serviceCode: service_code,
+      walletNumber: wallet_number,
+      value: Number(value),
+      qty: Number(qty),
+      status: 99,
+      message: "PENDING",
+    });
+
+    // Build form data (application/x-www-form-urlencoded)
+    const params = new URLSearchParams();
+    params.append("partner_id", config.partnerId);
+    params.append("command", command);
+    params.append("request_id", requestId);
+    params.append("service_code", service_code);
+    params.append("wallet_number", wallet_number);
+    params.append("value", String(value));
+    params.append("qty", String(qty));
+    params.append("sign", sign);
+
+    try {
+      const response = await axios.post(
+        `https://${DOMAIN_POST}/api/cardws`,
+        params.toString(),
+        {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          timeout: 30000,
+        }
+      );
+
+      // Update purchase with provider response
+      purchase.transId =
+        response.data && response.data.trans_id
+          ? response.data.trans_id
+          : purchase.transId;
+      purchase.status =
+        typeof response.data.status === "number"
+          ? response.data.status
+          : purchase.status;
+      purchase.message = response.data.message || purchase.message;
+      purchase.providerResponse = response.data;
+      await purchase.save();
+
+      // Log
+      await Log.create({
+        action: "buy_card",
+        message: `Mua thẻ: request ${requestId} - service ${service_code}`,
+        source: "backend",
+        userId: req.user.id,
+        userName: req.user.username || "",
+        userEmail: req.user.email || "",
+        meta: {
+          type: "card_buy",
+          requestId,
+          service_code,
+          wallet_number,
+          value,
+          qty,
+          providerStatus: response.data.status,
+        },
+      });
+
+      return res.status(200).json({ success: true, data: response.data });
+    } catch (apiErr) {
+      console.error("❌ Card buy API error:", apiErr?.message || apiErr);
+      // Mark purchase failed
+      purchase.status = 100;
+      purchase.message = apiErr?.message || "Lỗi kết nối nhà cung cấp";
+      purchase.providerResponse = apiErr?.response?.data || {
+        error: apiErr?.message,
+      };
+      await purchase.save();
+
+      await Log.create({
+        action: "buy_card_error",
+        message: `Lỗi mua thẻ: request ${requestId} - ${apiErr?.message}`,
+        source: "backend",
+        userId: req.user.id,
+        userName: req.user.username || "",
+        userEmail: req.user.email || "",
+        meta: {
+          type: "card_buy_error",
+          requestId,
+          error: apiErr?.message,
+        },
+      });
+
+      return res.status(502).json({
+        success: false,
+        message: "Không thể kết nối tới nhà cung cấp mua thẻ",
+        error: apiErr?.message,
+        provider: apiErr?.response?.data || null,
+      });
+    }
+  } catch (error) {
+    console.error("❌ buyCard error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server khi mua thẻ",
       error: error.message,
     });
   }

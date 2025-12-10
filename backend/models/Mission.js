@@ -10,9 +10,7 @@ const missionSchema = new mongoose.Schema(
     alias: { type: String, default: "" },
     code: { type: String, default: "" }, // mã xác nhận hoặc OTP
     reward: { type: Number, default: 0 },
-    maxUses: { type: Number, default: 1 },
     uses: { type: Number, default: 0 },
-    expireAt: { type: Date, default: null },
     singleUsePerUser: { type: Boolean, default: true },
     status: {
       type: String,
@@ -28,5 +26,6 @@ const missionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const Mission = mongoose.models.Mission || mongoose.model("Mission", missionSchema);
+const Mission =
+  mongoose.models.Mission || mongoose.model("Mission", missionSchema);
 export default Mission;

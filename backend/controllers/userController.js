@@ -304,6 +304,8 @@ export const updateUser = async (req, res) => {
     // Create log
     await Log.create({
       action: "admin_update_user",
+      message: `Admin cập nhật user ${userId}`,
+      source: "backend",
       userId: req.user.id,
       userName: req.user.username,
       userEmail: req.user.email,
@@ -363,6 +365,8 @@ export const resetUserPassword = async (req, res) => {
     // Create log
     await Log.create({
       action: "admin_reset_password",
+      message: `Admin đặt lại mật khẩu cho user ${user.username}`,
+      source: "backend",
       userId: req.user.id,
       userName: req.user.username,
       userEmail: req.user.email,
@@ -414,6 +418,8 @@ export const deleteUser = async (req, res) => {
     // Create log before deleting
     await Log.create({
       action: "admin_delete_user",
+      message: `Admin xóa user ${user.username} (${userId})`,
+      source: "backend",
       userId: req.user.id,
       userName: req.user.username,
       userEmail: req.user.email,

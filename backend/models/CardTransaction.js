@@ -19,7 +19,7 @@ const cardTransactionSchema = new mongoose.Schema(
     telco: {
       type: String,
       required: true,
-      enum: ["VIETTEL", "MOBIFONE", "VINAPHONE"],
+      enum: ["VIETTEL", "MOBIFONE", "VINAPHONE", "ZING", "GATE", "GARENA"],
     },
     code: {
       type: String,

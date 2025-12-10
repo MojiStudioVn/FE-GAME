@@ -1,54 +1,154 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { CreditCard, Smartphone, Wallet, Check } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 
 export default function BuyCoins() {
-  const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [cardData, setCardData] = useState({
     cardCode: '',
     cardSerial: '',
     cardValue: '',
   });
 
-  const packages = [
-    { id: 1, coins: 100, price: 10000, bonus: 0, popular: false },
-    { id: 2, coins: 500, price: 50000, bonus: 50, popular: false },
-    { id: 3, coins: 1000, price: 95000, bonus: 150, popular: true },
-    { id: 4, coins: 2000, price: 180000, bonus: 400, popular: false },
-    { id: 5, coins: 5000, price: 450000, bonus: 1000, popular: false },
-    { id: 6, coins: 10000, price: 850000, bonus: 2500, popular: false },
-  ];
+  const [provider, setProvider] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const paymentMethods = [
-    { id: 'momo', name: 'Ví MoMo', icon: <Smartphone size={24} />, fee: '0%' },
-    { id: 'banking', name: 'Chuyển khoản ngân hàng', icon: <CreditCard size={24} />, fee: '0%' },
-    { id: 'card', name: 'Thẻ ATM/Visa', icon: <CreditCard size={24} />, fee: '2%' },
-    { id: 'ewallet', name: 'Ví điện tử khác', icon: <Wallet size={24} />, fee: '1%' },
-    { id: 'scratch', name: 'Nạp thẻ cào', icon: <CreditCard size={24} />, fee: '0%' },
-  ];
+  const providers: Record<string, { label: string; denoms: number[] }> = {
+    VIETTEL: { label: 'Viettel', denoms: [10000,20000,30000,50000,100000,200000,300000,500000,1000000] },
+    VINAPHONE: { label: 'Vinaphone', denoms: [10000,20000,30000,50000,100000,200000,300000,500000] },
+    MOBIFONE: { label: 'Mobifone', denoms: [10000,20000,30000,50000,100000,200000,300000,500000] },
+  };
 
-  const cardValues = [
-    { value: '10000', label: '10,000 VNĐ' },
-    { value: '20000', label: '20,000 VNĐ' },
-    { value: '30000', label: '30,000 VNĐ' },
-    { value: '50000', label: '50,000 VNĐ' },
-    { value: '100000', label: '100,000 VNĐ' },
-    { value: '200000', label: '200,000 VNĐ' },
-    { value: '300000', label: '300,000 VNĐ' },
-    { value: '500000', label: '500,000 VNĐ' },
-  ];
+  // Provider-specific validation rules (card code and serial allowed lengths)
+  const validationRules: Record<string, { code?: number[]; serial?: number[] }> = {
+    VIETTEL: { code: [13, 15], serial: [11, 14] },
+    VINAPHONE: { code: [14], serial: [14] },
+    MOBIFONE: { code: [12], serial: [15] },
+  };
 
-  const recentPurchases = [
-    { id: 1, coins: 1000, price: 95000, date: '2024-11-28', status: 'Thành công' },
-    { id: 2, coins: 500, price: 50000, date: '2024-11-20', status: 'Thành công' },
-    { id: 3, coins: 2000, price: 180000, date: '2024-11-15', status: 'Thành công' },
-  ];
+  // package/payment-methods removed — this page shows the old scratch-card form inline
+
+  // cardValues replaced by provider-specific denoms in `providers` map
+
+  const [recentPurchases, setRecentPurchases] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const [showTopupModal, setShowTopupModal] = useState(false);
+  const [topupModalData, setTopupModalData] = useState<any>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailModalData, setDetailModalData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        setHistoryLoading(true);
+        setHistoryError(null);
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/card/history?page=1&limit=10', {
+          headers: {
+            Authorization: token ? `Bearer ${token}` : '',
+          },
+        });
+        const j = await res.json();
+        if (!j || !j.success) {
+          setHistoryError(j?.message || 'Không thể lấy lịch sử nạp thẻ');
+          setRecentPurchases([]);
+          return;
+        }
+        setRecentPurchases(j.data || []);
+      } catch (e) {
+        console.error('Fetch card history failed', e);
+        setHistoryError((e as Error)?.message || 'Lỗi mạng');
+        setRecentPurchases([]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+  };
+
+  const handleSubmitCard = async () => {
+    if (!provider) {
+      showToast({ type: 'error', title: 'Vui lòng chọn nhà mạng' });
+      return;
+    }
+    if (!cardData.cardValue) {
+      showToast({ type: 'error', title: 'Vui lòng chọn mệnh giá thẻ' });
+      return;
+    }
+
+    // provider-specific code/serial length validation
+    const rules = validationRules[provider];
+    const codeLen = cardData.cardCode?.trim()?.length || 0;
+    const serialLen = cardData.cardSerial?.trim()?.length || 0;
+    if (rules?.code && !rules.code.includes(codeLen)) {
+      showToast({ type: 'error', title: `Mã thẻ ${providers[provider].label} phải có độ dài ${rules.code.join(' hoặc ')} ký tự (hiện tại ${codeLen}).` });
+      return;
+    }
+    if (rules?.serial) {
+      if (!rules.serial.includes(serialLen)) {
+        showToast({ type: 'error', title: `Seri thẻ ${providers[provider].label} phải có độ dài ${rules.serial.join(' hoặc ')} ký tự (hiện tại ${serialLen}).` });
+        return;
+      }
+    }
+    try {
+      setIsSubmitting(true);
+      const token = localStorage.getItem('token');
+      // Align with backend: send `telco` and `amount`
+      const body = {
+        telco: provider,
+        code: cardData.cardCode?.trim(),
+        serial: cardData.cardSerial?.trim(),
+        amount: Number(cardData.cardValue),
+      };
+      const res = await fetch('/api/card/charge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json();
+      if (!j || !j.success) {
+        showToast({ type: 'error', title: j?.message || 'Lỗi khi nạp thẻ' });
+        return;
+      }
+
+      // Optimistically add pending transaction so user sees it immediately
+      const createdRequestId = j.data?.requestId || `local_${Date.now()}`;
+      const pendingEntry = {
+        requestId: createdRequestId,
+        telco: provider,
+        code: body.code,
+        serial: body.serial,
+        declaredValue: body.amount,
+        cardValue: null,
+        amount: 0,
+        status: j.data?.status ?? 99,
+        message: j.data?.message || 'Đang xử lý',
+        createdAt: new Date().toISOString(),
+      };
+      setRecentPurchases((p) => [pendingEntry, ...(p || [])]);
+
+      // Show toast and open modal with details
+      showToast({ type: 'success', title: 'Gửi yêu cầu nạp thẻ thành công' });
+      setTopupModalData({ requestId: createdRequestId, status: j.data?.status, message: j.data?.message });
+      setShowTopupModal(true);
+      setCardData({ cardCode: '', cardSerial: '', cardValue: '' });
+      setProvider('');
+    } catch (e) {
+      showToast({ type: 'error', title: 'Lỗi mạng khi nạp thẻ' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -60,182 +160,121 @@ export default function BuyCoins() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <h3 className="text-lg mb-4">Chọn gói xu</h3>
-          <div className="grid md:grid-cols-3 gap-4 mb-6">
-            {packages.map((pkg) => (
-              <Card
-                key={pkg.id}
-                className={`relative cursor-pointer ${
-                  selectedPackage === pkg.id ? 'border-white' : ''
-                } ${pkg.popular ? 'border-yellow-500' : ''}`}
-                onClick={() => setSelectedPackage(pkg.id)}
-              >
-                {pkg.popular && (
-                  <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                    <span className="bg-yellow-500 text-black text-xs px-3 py-1 rounded-full">
-                      Phổ biến nhất
-                    </span>
-                  </div>
-                )}
-                <div className="text-center pt-2">
-                  <p className="text-3xl mb-2">{pkg.coins.toLocaleString()}</p>
-                  <p className="text-xs text-neutral-400 mb-3">xu</p>
-                  {pkg.bonus > 0 && (
-                    <div className="bg-green-500/10 border border-green-500/20 rounded-lg py-1 px-2 mb-3">
-                      <p className="text-xs text-green-500">+{pkg.bonus} xu bonus</p>
-                    </div>
-                  )}
-                  <p className="text-lg mb-1">{formatPrice(pkg.price)}</p>
-                  <p className="text-xs text-neutral-500">
-                    ~{Math.round(pkg.price / pkg.coins)}đ/xu
-                  </p>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          {selectedPackage && (
-            <>
-              <h3 className="text-lg mb-4">Chọn phương thức thanh toán</h3>
-              <div className="grid md:grid-cols-2 gap-4 mb-6">
-                {paymentMethods.map((method) => (
-                  <Card
-                    key={method.id}
-                    className={`cursor-pointer ${
-                      paymentMethod === method.id ? 'border-white' : ''
-                    }`}
-                    onClick={() => setPaymentMethod(method.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-neutral-400">{method.icon}</div>
-                      <div className="flex-1">
-                        <p className="text-sm mb-1">{method.name}</p>
-                        <p className="text-xs text-neutral-500">Phí: {method.fee}</p>
-                      </div>
-                      {paymentMethod === method.id && (
-                        <Check size={20} className="text-green-500" />
-                      )}
-                    </div>
-                  </Card>
-                ))}
+          <h3 className="text-lg mb-4">Nạp thẻ cào</h3>
+          <Card className="mb-6">
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-white mb-2 block">Nhà mạng</label>
+                <select
+                  value={provider}
+                  onChange={(e) => { setProvider(e.target.value); setCardData({ ...cardData, cardValue: '' }); }}
+                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                >
+                  <option value="">-- Chọn nhà mạng --</option>
+                  {Object.keys(providers).map((p) => (
+                    <option key={p} value={p}>{providers[p].label}</option>
+                  ))}
+                </select>
               </div>
-
-              {paymentMethod === 'scratch' && (
-                <Card className="mb-6 smooth-fade-in">
-                  <h3 className="text-lg mb-4">Thông tin thẻ cào</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-white mb-2 block">Mã thẻ</label>
-                      <input
-                        type="text"
-                        placeholder="Nhập mã thẻ"
-                        value={cardData.cardCode}
-                        onChange={(e) => setCardData({ ...cardData, cardCode: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                      />
+              {/* Wallet ID removed — server will credit user automatically after successful charge */}
+              <div>
+                <label className="text-sm font-medium text-white mb-2 block">Mã thẻ</label>
+                <input
+                  type="text"
+                  placeholder="Nhập mã thẻ"
+                  value={cardData.cardCode}
+                  onChange={(e) => setCardData({ ...cardData, cardCode: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-white mb-2 block">Seri thẻ</label>
+                <input
+                  type="text"
+                  placeholder="Nhập seri thẻ"
+                  value={cardData.cardSerial}
+                  onChange={(e) => setCardData({ ...cardData, cardSerial: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-white mb-2 block">Chọn mệnh giá thẻ</label>
+                <select
+                  value={cardData.cardValue}
+                  onChange={(e) => setCardData({ ...cardData, cardValue: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                >
+                  <option value="">-- Chọn mệnh giá --</option>
+                  {provider && providers[provider] ? (
+                    providers[provider].denoms.map((d) => (
+                      <option key={d} value={String(d)}>{d.toLocaleString()}</option>
+                    ))
+                  ) : (
+                    <option value="">Vui lòng chọn nhà mạng trước</option>
+                  )}
+                </select>
+              </div>
+              <div className="pt-3">
+                <Button className="w-full" onClick={handleSubmitCard}>Nạp thẻ</Button>
+              </div>
+            </div>
+          </Card>
+          {/* Lịch sử nạp xu - moved under form */}
+          <Card className="mb-6">
+            <h3 className="text-lg mb-4">Lịch sử nạp xu</h3>
+            <div className="space-y-3">
+              {historyLoading ? (
+                <p className="text-sm text-neutral-400">Đang tải lịch sử...</p>
+              ) : historyError ? (
+                <p className="text-sm text-red-400">{historyError}</p>
+              ) : recentPurchases.length === 0 ? (
+                <p className="text-sm text-neutral-400">Chưa có lịch sử nạp xu</p>
+              ) : (
+                <div className="grid gap-3">
+                  {recentPurchases.map((t: any) => (
+                    <div key={t.requestId || t._id} className="p-3 bg-neutral-850 border border-neutral-800 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-md bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-semibold text-sm">
+                          {(providers as any)[t.telco]?.label?.[0] || String(t.telco || '-')?.[0] || '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-semibold truncate">{(providers as any)[t.telco]?.label || t.telco}</div>
+                            <div className="text-xs text-neutral-400 font-mono truncate">Mã: {t.code || '-'}</div>
+                            <div className="text-xs text-neutral-400 font-mono truncate">Seri: {t.serial || '-'}</div>
+                          </div>
+                          <div className="text-xs text-neutral-500 mt-1 flex items-center gap-3">
+                            <div>{formatPrice(t.declaredValue || t.cardValue || 0)}</div>
+                            <div className="italic">{new Date(t.createdAt).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${t.status === 1 ? 'bg-green-600/20 text-green-300' : t.status === 2 ? 'bg-yellow-600/20 text-yellow-300' : t.status === 99 ? 'bg-neutral-700 text-neutral-200' : 'bg-red-600/20 text-red-300'}`}>
+                          {t.status === 1 ? 'Thành công' : t.status === 2 ? 'Sai mệnh giá' : t.status === 99 ? 'Đang xử lý' : 'Lỗi'}
+                        </span>
+                        <button
+                          className="text-xs text-neutral-300 hover:text-white px-2 py-1 border border-neutral-800 rounded"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(`${t.code || ''}`);
+                              showToast({ type: 'success', title: 'Đã sao chép mã thẻ' });
+                            } catch (err) {
+                              showToast({ type: 'error', title: 'Không thể sao chép' });
+                            }
+                          }}
+                        >Sao chép mã</button>
+                        <button className="text-xs text-neutral-300 hover:text-white px-2 py-1 border border-neutral-800 rounded" onClick={() => { setDetailModalData(t); setShowDetailModal(true); }}>Chi tiết</button>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium text-white mb-2 block">Seri thẻ</label>
-                      <input
-                        type="text"
-                        placeholder="Nhập seri thẻ"
-                        value={cardData.cardSerial}
-                        onChange={(e) => setCardData({ ...cardData, cardSerial: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-white mb-2 block">Chọn mệnh giá thẻ</label>
-                      <select
-                        value={cardData.cardValue}
-                        onChange={(e) => setCardData({ ...cardData, cardValue: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                      >
-                        <option value="">-- Chọn mệnh giá --</option>
-                        {cardValues.map((cv) => (
-                          <option key={cv.value} value={cv.value}>
-                            {cv.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </Card>
+                  ))}
+                </div>
               )}
-
-              {paymentMethod && (
-                <Card>
-                  <h3 className="text-lg mb-4">Xác nhận giao dịch</h3>
-                  <div className="space-y-3 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-neutral-400">Gói xu</span>
-                      <span>
-                        {packages.find(p => p.id === selectedPackage)?.coins.toLocaleString()} xu
-                        {packages.find(p => p.id === selectedPackage)?.bonus ?
-                          ` (+${packages.find(p => p.id === selectedPackage)?.bonus} bonus)` : ''}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-neutral-400">Giá gói</span>
-                      <span>{formatPrice(packages.find(p => p.id === selectedPackage)?.price || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-neutral-400">Phương thức</span>
-                      <span>{paymentMethods.find(m => m.id === paymentMethod)?.name}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-neutral-400">Phí giao dịch</span>
-                      <span>{paymentMethods.find(m => m.id === paymentMethod)?.fee}</span>
-                    </div>
-                    <div className="flex justify-between pt-3 border-t border-neutral-800">
-                      <span>Tổng thanh toán</span>
-                      <span className="text-lg">{formatPrice(packages.find(p => p.id === selectedPackage)?.price || 0)}</span>
-                    </div>
-                  </div>
-                  <Button className="w-full">Thanh toán ngay</Button>
-                </Card>
-              )}
-            </>
-          )}
+            </div>
+          </Card>
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <h3 className="text-lg mb-4">Ưu đãi</h3>
-            <div className="space-y-3">
-              <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                <p className="text-sm mb-1">🎁 Nạp lần đầu</p>
-                <p className="text-xs text-neutral-300">Nhận thêm 50% xu cho lần nạp đầu tiên</p>
-              </div>
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <p className="text-sm mb-1">⚡ Flash sale cuối tuần</p>
-                <p className="text-xs text-neutral-300">Giảm 20% cho tất cả gói xu</p>
-              </div>
-              <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <p className="text-sm mb-1">💎 Gói VIP</p>
-                <p className="text-xs text-neutral-300">Mua gói 10,000 xu nhận thêm 2,500 xu</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="text-lg mb-4">Lịch sử nạp xu</h3>
-            <div className="space-y-3">
-              {recentPurchases.map((purchase) => (
-                <div key={purchase.id} className="pb-3 border-b border-neutral-800 last:border-0 last:pb-0">
-                  <div className="flex justify-between mb-1">
-                    <p className="text-sm">{purchase.coins.toLocaleString()} xu</p>
-                    <span className="text-xs text-green-500">{purchase.status}</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-neutral-500">
-                    <span>{formatPrice(purchase.price)}</span>
-                    <span>{purchase.date}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
           <Card>
             <h3 className="text-lg mb-3">Lưu ý</h3>
             <div className="space-y-2 text-xs text-neutral-400">
@@ -247,6 +286,58 @@ export default function BuyCoins() {
           </Card>
         </div>
       </div>
+      {/* Top-up result modal */}
+      <Dialog open={showTopupModal} onOpenChange={setShowTopupModal}>
+        <DialogContent className="max-w-md bg-green-900 border border-green-700">
+          <div className="text-center py-6">
+            <div className="text-3xl font-extrabold text-white">Nạp thẻ thành công</div>
+            <div className="text-sm text-green-100 mt-2">Vui lòng chờ hệ thống xác thực</div>
+          </div>
+          <DialogDescription className="mb-4 text-green-50 px-4">
+            {topupModalData ? (
+              <div className="space-y-1 text-sm">
+                <div><strong>Mã yêu cầu:</strong> <span className="font-mono">{topupModalData.requestId}</span></div>
+                <div><strong>Ghi chú:</strong> {topupModalData.message || '-'}</div>
+              </div>
+            ) : (
+              <div className="text-sm">Đang xử lý...</div>
+            )}
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTopupModal(false)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail modal for a history item (dark theme, formatted) */}
+      <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
+        <DialogContent className="max-w-xl bg-black text-white border border-neutral-800">
+          <DialogHeader>
+            <DialogTitle>Chi tiết giao dịch</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="mb-4">
+            {detailModalData ? (
+              <div className="text-sm text-white space-y-2">
+                <div><strong>RequestId:</strong> {(detailModalData.requestId || '').split('_')[0]}</div>
+                <div><strong>Loại thẻ:</strong> {detailModalData.telco}</div>
+                <div><strong>Mã:</strong> {detailModalData.code}</div>
+                <div><strong>Seri:</strong> {detailModalData.serial}</div>
+                <div><strong>Mệnh giá khai báo:</strong> {formatPrice(detailModalData.declaredValue || detailModalData.cardValue || 0)}</div>
+                <div>
+                  <strong>Trạng thái:</strong>
+                  <span className="ml-2 font-mono">{detailModalData.status}</span>
+                  <div className="mt-1 text-sm text-gray-300">{detailModalData.message}</div>
+                </div>
+              </div>
+            ) : (
+              <div>Không có dữ liệu</div>
+            )}
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDetailModal(false)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

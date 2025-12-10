@@ -4,6 +4,9 @@ import { Card } from '../components/Card';
 import { Crown, Lightbulb, Lock, Copy, Home, Target, Clock, Users } from 'lucide-react';
 
 export default function Leaderboard() {
+  const [loadingLb, setLoadingLb] = useState(false);
+  const [remoteLeaderboard, setRemoteLeaderboard] = useState<Array<any>>([]);
+  const [lbError, setLbError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'history'>('leaderboard');
   const [timeLeft, setTimeLeft] = useState({
     days: 29,
@@ -34,14 +37,38 @@ export default function Leaderboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const leaderboardData = [
-    { rank: 1, username: 'roki', badge: 'BXH tuần • Top 1', missions: 96, lastActive: '22:50 05/12' },
-    { rank: 2, username: 'trungtran1133', badge: 'BXH tuần • Top 2', missions: 77, lastActive: '18:18 05/12' },
-    { rank: 3, username: 'hiuhiuhuy', badge: 'BXH tuần • Top 3', missions: 55, lastActive: '11:39 05/12' },
-    { rank: 4, username: 'Hieusqr1234', badge: 'BXH tuần • Hạng 4', missions: 49, lastActive: '01:23 06/12' },
-    { rank: 5, username: 'Jack', badge: 'BXH tuần • Hạng 5', missions: 40, lastActive: '17:08 05/12' },
-    { rank: 6, username: '0355304206', badge: 'BXH tuần • Hạng 6', missions: 38, lastActive: '12:48 05/12' },
-  ];
+  const leaderboardData = remoteLeaderboard.length
+    ? remoteLeaderboard.map((r, i) => ({
+        rank: i + 1,
+        username: r.username || (`#${String(r.userId).slice(-6)}`),
+        badge: `BXH tuần • Hạng ${i + 1}`,
+        missions: r.missions || 0,
+        lastActive: r.lastClaim ? new Date(r.lastClaim).toLocaleString() : '-',
+        coins: r.totalCoins || 0,
+      }))
+    : [];
+
+  useEffect(() => {
+    const fetchLb = async () => {
+      setLoadingLb(true);
+      setLbError(null);
+      try {
+        const res = await fetch('/api/public/leaderboard?period=week&limit=50');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data && data.leaderboard) {
+          setRemoteLeaderboard(data.leaderboard);
+        }
+      } catch (err) {
+        console.error('Failed to load leaderboard', err);
+        setLbError('Không thể tải bảng xếp hạng');
+      } finally {
+        setLoadingLb(false);
+      }
+    };
+
+    fetchLb();
+  }, []);
 
   const topRewards = [
     {
@@ -195,7 +222,14 @@ export default function Leaderboard() {
 
       {/* Leaderboard List */}
       <div className="space-y-3">
-        {leaderboardData.map((player) => {
+        {loadingLb ? (
+          <div className="text-center text-neutral-400">Đang tải bảng xếp hạng...</div>
+        ) : lbError ? (
+          <div className="text-center text-yellow-300">{lbError}</div>
+        ) : leaderboardData.length === 0 ? (
+          <div className="text-center text-neutral-400">Không có dữ liệu bảng xếp hạng.</div>
+        ) : (
+          leaderboardData.map((player) => {
           const badge = getRankBadge(player.rank);
 
           return (
@@ -237,7 +271,7 @@ export default function Leaderboard() {
               </div>
             </Card>
           );
-        })}
+          }))}
       </div>
     </div>
   );

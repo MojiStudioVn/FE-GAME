@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const paymentConfigSchema = new mongoose.Schema(
   {
+    type: {
+      type: String,
+      enum: ["buy-card", "recharge-card", "withdraw"],
+      default: "recharge-card",
+    },
     provider: {
       type: String,
       default: "TheNapVip.Com",
@@ -12,6 +17,11 @@ const paymentConfigSchema = new mongoose.Schema(
       default: "",
     },
     partnerKey: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    walletNumber: {
       type: String,
       required: false,
       default: "",

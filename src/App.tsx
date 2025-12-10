@@ -20,6 +20,7 @@ import FindAccountBySkin from './pages/FindAccountBySkin';
 import BuyAuctionAccount from './pages/BuyAuctionAccount';
 import CommunityChat from './pages/CommunityChat';
 import Profile from './pages/Profile';
+import UploadAccounts from './pages/UploadAccounts';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -34,6 +35,7 @@ import AdminPaymentSettings from './pages/admin/PaymentSettings';
 import AdminGiftTokens from './pages/admin/GiftTokens';
 import APIProviders from './pages/admin/APIProviders';
 import AdminMissions from './pages/admin/AdminMissions';
+import AdminAccounts from './pages/admin/Accounts';
 import NotFound from './pages/NotFound';
 import './styles/globals.css';
 
@@ -78,6 +80,7 @@ function AppRoutes() {
                   <Route path="/profile" element={<PageLayout><Profile /></PageLayout>} />
                   <Route path="/daily-checkin" element={<PageLayout><DailyCheckIn /></PageLayout>} />
                   <Route path="/game-card" element={<PageLayout><GameCard /></PageLayout>} />
+
                   <Route path="/missions" element={<PageLayout><Missions /></PageLayout>} />
                   <Route path="/invite-friends" element={<PageLayout><InviteFriends /></PageLayout>} />
                   <Route path="/exchange-account" element={<PageLayout><ExchangeAccount /></PageLayout>} />
@@ -104,6 +107,8 @@ function AppRoutes() {
                   <Route path="transactions" element={<AdminTransactions />} />
                   <Route path="reports" element={<AdminReports />} />
                   <Route path="payment-settings" element={<AdminPaymentSettings />} />
+                  <Route path="upload-accounts" element={<UploadAccounts />} />
+                  <Route path="accounts" element={<AdminAccounts />} />
                   <Route path="missions" element={<AdminMissions />} />
                   <Route path="gift-tokens" element={<AdminGiftTokens />} />
                   <Route path="api-providers" element={<APIProviders />} />

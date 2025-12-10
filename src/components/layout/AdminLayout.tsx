@@ -10,11 +10,13 @@ import {
   Menu,
   X,
   ChevronRight,
+  ChevronDown,
   Shield,
   Wallet,
   Gift,
   Link2,
   Target,
+  Upload,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,6 +31,7 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, user }: AdminLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -37,6 +40,14 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
   const menuItems = isAdmin
     ? [
         { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        {
+          label: 'Quản lý ACC',
+          icon: Upload,
+          children: [
+            { path: '/admin/upload-accounts', label: 'Upload ACC' },
+            { path: '/admin/accounts', label: 'Danh sách tài khoản' },
+          ],
+        },
         { path: '/admin/users', icon: Users, label: 'Người dùng' },
         { path: '/admin/transactions', icon: CreditCard, label: 'Giao dịch' },
         { path: '/admin/reports', icon: BarChart3, label: 'Báo cáo' },
@@ -110,7 +121,56 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-2">
           {menuItems.map((item) => {
-            const Icon = item.icon;
+            // If item has children, render a collapsible group
+            if ((item as any).children) {
+              const children = (item as any).children as Array<any>;
+              const Icon = item.icon as any;
+              const open = expandedMenu === item.label;
+
+              return (
+                <div key={item.label}>
+                  <button
+                    onClick={() => setExpandedMenu(open ? null : (item.label as string))}
+                    className={`flex items-center justify-between gap-3 w-full px-3 py-2 rounded-lg transition-colors ${
+                      open ? 'bg-white text-black' : 'hover:bg-neutral-800 text-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {Icon && <Icon size={20} />}
+                      {(isSidebarOpen || isMobileMenuOpen) && <span className="font-medium">{item.label}</span>}
+                    </div>
+                    {(isSidebarOpen || isMobileMenuOpen) && (
+                      <ChevronDown size={16} className={`transform transition-transform ${open ? 'rotate-180' : 'rotate-0'}`} />
+                    )}
+                  </button>
+
+                  <div
+                    className={`overflow-hidden transition-all duration-200 ease-linear ${
+                      open ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                    }`}
+                  >
+                    <div className="ml-6 mt-2 space-y-1 py-1">
+                      {children.map((c) => (
+                        <NavLink
+                          key={c.path}
+                          to={c.path}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={({ isActive }) =>
+                            `block px-3 py-1 rounded-md text-sm transition-colors ${
+                              isActive ? 'bg-white text-black' : 'hover:bg-neutral-800 text-neutral-400'
+                            }`
+                          }
+                        >
+                          {(isSidebarOpen || isMobileMenuOpen) && <span>{c.label}</span>}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const Icon = item.icon as any;
             return (
               <NavLink
                 key={item.path}
@@ -125,7 +185,7 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
                   }`
                 }
               >
-                <Icon size={20} />
+                {Icon && <Icon size={20} />}
                 {(isSidebarOpen || isMobileMenuOpen) && <span>{item.label}</span>}
               </NavLink>
             );

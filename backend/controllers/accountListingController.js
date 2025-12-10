@@ -536,3 +536,192 @@ export const getRecentAccounts = async (req, res) => {
     });
   }
 };
+
+// Upload accounts from a file (txt or docx)
+export const uploadAccountsFile = async (req, res) => {
+  try {
+    const { type } = req.body; // 'random' or 'checked-account'
+    const file = req.file;
+
+    if (!file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng gửi file .txt hoặc .docx" });
+    }
+
+    const fs = await import("fs").then((m) => m.promises);
+    const path = await import("path");
+
+    const ext = path.extname(file.originalname).toLowerCase();
+    let content = "";
+
+    if (ext === ".txt") {
+      content = await fs.readFile(file.path, "utf-8");
+    } else if (ext === ".docx") {
+      // DOCX parsing not implemented server-side; return error for now
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Chưa hỗ trợ parse .docx trên server. Vui lòng dùng .txt",
+        });
+    } else {
+      return res
+        .status(400)
+        .json({ success: false, message: "Định dạng file không hợp lệ" });
+    }
+
+    // Each line is one account entry
+    const lines = content
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const created = [];
+    const errors = [];
+
+    // Require admin identity to set uploadedBy (accept req.user from verifyToken)
+    // Note: verifyToken places decoded token on `req.user` with field `id`, not `_id`.
+    const adminId = req.admin?._id || req.user?._id || req.user?.id;
+    if (!adminId) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "Yêu cầu quyền admin để upload danh sách ACC",
+        });
+    }
+
+    // helper to normalize keys (remove diacritics, spaces, lowercase)
+    const stripDiacritics = (s = "") =>
+      s
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\w\s]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, "");
+
+    for (const [idx, line] of lines.entries()) {
+      // Fields separated by |
+      const parts = line
+        .split("|")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (parts.length < 2) {
+        errors.push({ line: idx + 1, reason: "Thiếu account|password" });
+        continue;
+      }
+
+      const username = parts[0];
+      const password = parts[1];
+
+      // Defaults
+      let heroes = [];
+      let skins = [];
+      let ssCards = [];
+      let sssCards = [];
+      let level = 1;
+      let rank = "Unranked";
+      let country = "Vietnam";
+      const otherExtras = [];
+
+      // Parse extras (KEY : VALUE) if present
+      const extras = parts.slice(2);
+      for (const extra of extras) {
+        // split by first ':' or '：'
+        const sepIndex = extra.indexOf(":");
+        if (sepIndex === -1) {
+          otherExtras.push(extra);
+          continue;
+        }
+        const key = extra.slice(0, sepIndex).trim();
+        const val = extra.slice(sepIndex + 1).trim();
+
+        const nk = stripDiacritics(key);
+
+        if (nk.includes("level")) {
+          const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+          if (!isNaN(parsed)) level = parsed;
+          else otherExtras.push(extra);
+        } else if (
+          nk.includes("rank") ||
+          nk.includes("hang") ||
+          nk.includes("hang")
+        ) {
+          rank = val;
+        } else if (nk.includes("skin")) {
+          // split multiple skins by comma or '|' or ';'
+          const items = val
+            .split(/,|;|\|/)
+            .map((i) => i.trim())
+            .filter(Boolean);
+          skins = skins.concat(items);
+        } else if (nk.includes("tuong")) {
+          const items = val
+            .split(/,|;|\|/)
+            .map((i) => i.trim())
+            .filter(Boolean);
+          heroes = heroes.concat(items);
+        } else if (nk === "ss") {
+          const items = val
+            .split(/,|;|\|/)
+            .map((i) => i.trim())
+            .filter(Boolean);
+          ssCards = ssCards.concat(items);
+        } else if (nk === "sss") {
+          const items = val
+            .split(/,|;|\|/)
+            .map((i) => i.trim())
+            .filter(Boolean);
+          sssCards = sssCards.concat(items);
+        } else if (nk.includes("country") || nk.includes("vung")) {
+          country = val;
+        } else {
+          otherExtras.push(extra);
+        }
+      }
+
+      const description = otherExtras.length > 0 ? otherExtras.join(" | ") : "";
+
+      // Create AccountListing record
+      const accountData = {
+        username,
+        password,
+        images: [],
+        heroes,
+        skins,
+        ssCards,
+        sssCards,
+        level,
+        rank,
+        country,
+        saleType: "fixed",
+        description: description || undefined,
+        uploadedBy: adminId,
+      };
+
+      try {
+        const acc = await AccountListing.create(accountData);
+        created.push({ id: acc._id, username: acc.username });
+      } catch (err) {
+        errors.push({ line: idx + 1, reason: err.message });
+      }
+    }
+
+    // Log admin action if admin present
+    if (req.admin && req.admin._id) {
+      await AdminLog.create({
+        adminId: req.admin._id,
+        action: "bulk_upload_accounts",
+        details: `Upload ${created.length} accounts from file ${file.originalname}`,
+        metadata: { createdCount: created.length, errorsCount: errors.length },
+      });
+    }
+
+    res.status(200).json({ success: true, created, errors });
+  } catch (error) {
+    console.error("Error uploading accounts file:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Lỗi khi xử lý file upload" });
+  }
+};

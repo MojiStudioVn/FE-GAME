@@ -46,3 +46,29 @@ export const uploadAccountImages = multer({
   },
   fileFilter: fileFilter,
 }).array("images", 10); // Allow up to 10 images
+
+// Multer middleware for account list files (.txt, .docx)
+const fileStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "accounts-file-" + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const accountFileFilter = (req, file, cb) => {
+  const allowedExt = /\.txt$|\.docx$/i;
+  if (allowedExt.test(path.extname(file.originalname))) {
+    cb(null, true);
+  } else {
+    cb(new Error("Chỉ chấp nhận file .txt hoặc .docx"));
+  }
+};
+
+export const uploadAccountFile = multer({
+  storage: fileStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: accountFileFilter,
+}).single("file");

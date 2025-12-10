@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  Upload,
 } from 'lucide-react';
 
 interface MenuItem {

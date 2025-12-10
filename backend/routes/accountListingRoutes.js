@@ -8,13 +8,28 @@ import {
   runCleanupNow,
   hardDeleteAccount,
   getRecentAccounts,
+  uploadAccountsFile,
 } from "../controllers/accountListingController.js";
-import { uploadAccountImages } from "../middleware/uploadMiddleware.js";
+import {
+  uploadAccountImages,
+  uploadAccountFile,
+} from "../middleware/uploadMiddleware.js";
+import { verifyToken, isAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
 // POST /api/admin/upload-account (with image upload)
 router.post("/upload-account", uploadAccountImages, uploadAccount);
+
+// POST /api/admin/upload-accounts (file upload: txt/docx) - for bulk account upload
+// Protect route with admin auth
+router.post(
+  "/upload-accounts",
+  verifyToken,
+  isAdmin,
+  uploadAccountFile,
+  uploadAccountsFile
+);
 
 // GET /api/admin/accounts (list all accounts with filters)
 router.get("/accounts", getAccountListings);
@@ -40,7 +55,9 @@ router.post("/cleanup-accounts", runCleanupNow);
 // GET /cron/clean-acc (trigger cleanup via HTTP)
 router.get("/cron/clean-acc", async (req, res) => {
   try {
-    const { runCleanupNow } = await import("../controllers/accountListingController.js");
+    const { runCleanupNow } = await import(
+      "../controllers/accountListingController.js"
+    );
     // Gọi controller, không cần xác thực admin
     await runCleanupNow(req, res);
   } catch (error) {

@@ -107,7 +107,9 @@ export const chargeCard = async (req, res) => {
       // Update transaction with response (normalize status to Number)
       const respStatus = Number(response?.data?.status);
       transaction.transId = response.data.trans_id;
-      transaction.status = isNaN(respStatus) ? response.data.status : respStatus;
+      transaction.status = isNaN(respStatus)
+        ? response.data.status
+        : respStatus;
       transaction.message = response.data.message || "";
       await transaction.save();
 
@@ -182,26 +184,26 @@ export const chargeCard = async (req, res) => {
 // @access  Public (but verified by signature)
 export const cardCallback = async (req, res) => {
   try {
-      // Some providers call back with GET (query) instead of POST (body).
-      // Merge both so we can handle either case and avoid destructuring undefined.
-      const payload = { ...(req.body || {}), ...(req.query || {}) };
+    // Some providers call back with GET (query) instead of POST (body).
+    // Merge both so we can handle either case and avoid destructuring undefined.
+    const payload = { ...(req.body || {}), ...(req.query || {}) };
 
-      const {
-        status,
-        message,
-        request_id,
-        declared_value,
-        value,
-        card_value,
-        amount,
-        code,
-        serial,
-        telco,
-        trans_id,
-        callback_sign,
-        sign,
-        command,
-      } = payload;
+    const {
+      status,
+      message,
+      request_id,
+      declared_value,
+      value,
+      card_value,
+      amount,
+      code,
+      serial,
+      telco,
+      trans_id,
+      callback_sign,
+      sign,
+      command,
+    } = payload;
 
     console.log("📥 Card callback received:", req.body);
 
@@ -210,7 +212,8 @@ export const cardCallback = async (req, res) => {
 
     // Verify signature - support both charging callbacks (md5(partnerKey+code+serial))
     // and buy/getbalance callbacks (md5(partnerKey+partnerId+command+request_id)).
-      const receivedSign = callback_sign || sign || payload.callbackSign || payload.callback_sign;
+    const receivedSign =
+      callback_sign || sign || payload.callbackSign || payload.callback_sign;
     const expectedSignCharging =
       code && serial ? generateSign(config.partnerKey, code, serial) : null;
     const expectedSignBuy =
@@ -269,10 +272,10 @@ export const cardCallback = async (req, res) => {
       purchase.status = status;
       purchase.message = message || purchase.message;
       purchase.transId = trans_id || purchase.transId;
-        purchase.providerResponse = {
-          ...(purchase.providerResponse || {}),
-          ...(payload || {}),
-        };
+      purchase.providerResponse = {
+        ...(purchase.providerResponse || {}),
+        ...(payload || {}),
+      };
       await purchase.save();
     }
 

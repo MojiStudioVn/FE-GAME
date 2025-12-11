@@ -19,7 +19,13 @@ import { verifyToken, isAdmin } from "../middleware/auth.js";
 const router = express.Router();
 
 // POST /api/admin/upload-account (with image upload) - admin only
-router.post("/upload-account", verifyToken, isAdmin, uploadAccountImages, uploadAccount);
+router.post(
+  "/upload-account",
+  verifyToken,
+  isAdmin,
+  uploadAccountImages,
+  uploadAccount
+);
 
 // POST /api/admin/upload-accounts (file upload: txt/docx) - for bulk account upload
 // Protect route with admin auth
@@ -44,7 +50,12 @@ router.put("/accounts/:id", verifyToken, isAdmin, updateAccountListing);
 router.delete("/accounts/:id", verifyToken, isAdmin, deleteAccountListing);
 
 // POST /api/admin/accounts/:id/hard-delete (hard delete with confirmation) - admin only
-router.post("/accounts/:id/hard-delete", verifyToken, isAdmin, hardDeleteAccount);
+router.post(
+  "/accounts/:id/hard-delete",
+  verifyToken,
+  isAdmin,
+  hardDeleteAccount
+);
 
 // POST /api/admin/parse-blob (for preview) - admin only
 router.post("/parse-blob", verifyToken, isAdmin, parseBlob);

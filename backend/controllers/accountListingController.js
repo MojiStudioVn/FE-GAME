@@ -265,15 +265,25 @@ export const getAccountListings = async (req, res) => {
   } catch (error) {
     // Add diagnostic context to help debug failures (safe: do not log tokens)
     try {
-      const userInfo = req.user ? { id: req.user.id || req.user._id, role: req.user.role } : null;
+      const userInfo = req.user
+        ? { id: req.user.id || req.user._id, role: req.user.role }
+        : null;
       console.error("Error fetching accounts:", {
         message: error?.message || String(error),
         stack: error?.stack,
         user: userInfo,
-        query: { status: req.query.status, saleType: req.query.saleType, page: req.query.page, limit: req.query.limit },
+        query: {
+          status: req.query.status,
+          saleType: req.query.saleType,
+          page: req.query.page,
+          limit: req.query.limit,
+        },
       });
     } catch (e) {
-      console.error("Error fetching accounts (failed to log diagnostic):", error);
+      console.error(
+        "Error fetching accounts (failed to log diagnostic):",
+        error
+      );
     }
     res.status(500).json({
       success: false,
@@ -570,12 +580,10 @@ export const uploadAccountsFile = async (req, res) => {
       content = await fs.readFile(file.path, "utf-8");
     } else if (ext === ".docx") {
       // DOCX parsing not implemented server-side; return error for now
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Chưa hỗ trợ parse .docx trên server. Vui lòng dùng .txt",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Chưa hỗ trợ parse .docx trên server. Vui lòng dùng .txt",
+      });
     } else {
       return res
         .status(400)
@@ -594,12 +602,10 @@ export const uploadAccountsFile = async (req, res) => {
     // Note: verifyToken places decoded token on `req.user` with field `id`, not `_id`.
     const adminId = req.admin?._id || req.user?._id || req.user?.id;
     if (!adminId) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Yêu cầu quyền admin để upload danh sách ACC",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Yêu cầu quyền admin để upload danh sách ACC",
+      });
     }
 
     // helper to normalize keys (remove diacritics, spaces, lowercase)

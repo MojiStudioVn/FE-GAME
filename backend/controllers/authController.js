@@ -117,7 +117,10 @@ export const login = async (req, res, next) => {
     // - Browsers require `SameSite=None` cookies to also have `Secure=true`.
     // - For local dev over http, use `SameSite='lax'` so the cookie is accepted.
     // - For HTTPS (production or behind ngrok with https), use `SameSite='none'` and `Secure=true`.
-    const isSecureRequest = req.secure || req.headers["x-forwarded-proto"] === "https" || config.NODE_ENV === "production";
+    const isSecureRequest =
+      req.secure ||
+      req.headers["x-forwarded-proto"] === "https" ||
+      config.NODE_ENV === "production";
     const cookieOptions = {
       httpOnly: true,
       secure: Boolean(isSecureRequest),

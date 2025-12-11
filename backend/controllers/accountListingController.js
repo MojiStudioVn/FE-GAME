@@ -263,7 +263,18 @@ export const getAccountListings = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching accounts:", error);
+    // Add diagnostic context to help debug failures (safe: do not log tokens)
+    try {
+      const userInfo = req.user ? { id: req.user.id || req.user._id, role: req.user.role } : null;
+      console.error("Error fetching accounts:", {
+        message: error?.message || String(error),
+        stack: error?.stack,
+        user: userInfo,
+        query: { status: req.query.status, saleType: req.query.saleType, page: req.query.page, limit: req.query.limit },
+      });
+    } catch (e) {
+      console.error("Error fetching accounts (failed to log diagnostic):", error);
+    }
     res.status(500).json({
       success: false,
       message: "Lỗi khi lấy danh sách ACC",

@@ -69,6 +69,7 @@ export default function AdminUsers() {
       if (filterRole !== 'all') params.append('role', filterRole);
 
       const response = await fetch(`${API_URL}/admin/users?${params}`, {
+        credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -103,6 +104,7 @@ export default function AdminUsers() {
 
       const response = await fetch(`${API_URL}/admin/users/${selectedUser._id}/adjust-coins`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -158,6 +160,7 @@ export default function AdminUsers() {
 
           const response = await fetch(`${API_URL}/admin/users/${user._id}/status`, {
             method: 'PUT',
+            credentials: 'include',
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json',
@@ -188,6 +191,7 @@ export default function AdminUsers() {
       // Update user info
       const response = await fetch(`${API_URL}/admin/users/${selectedUser._id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -205,6 +209,7 @@ export default function AdminUsers() {
       if (editFormData.newPassword) {
         const pwdResponse = await fetch(`${API_URL}/admin/users/${selectedUser._id}/reset-password`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -235,6 +240,7 @@ export default function AdminUsers() {
 
           const response = await fetch(`${API_URL}/admin/users/${user._id}`, {
             method: 'DELETE',
+            credentials: 'include',
             headers: {
               'Authorization': `Bearer ${token}`,
             },

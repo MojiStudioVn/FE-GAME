@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import CheckIn from "../models/CheckIn.js";
 import User from "../models/User.js";
+import Mission from "../models/Mission.js";
+import UserMission from "../models/UserMission.js";
 
 // Helper: Get week start date (Monday)
 const getWeekStart = (date) => {
@@ -72,10 +74,18 @@ export const getCheckInStatus = async (req, res, next) => {
     // Get user's total coins
     const user = await User.findById(userId);
 
+    // Check if user completed any mission today (required to be eligible for check-in)
+    const todayStart = getTodayStart();
+    const hasCompletedMissionToday = await UserMission.exists({
+      user: userId,
+      status: "completed",
+      createdAt: { $gte: todayStart },
+    });
+
     res.status(200).json({
       success: true,
       data: {
-        canCheckIn: !todayCheckIn,
+        canCheckIn: !todayCheckIn && !!hasCompletedMissionToday,
         todayCheckIn: todayCheckIn || null,
         weekCheckIns: weekCheckIns.map((ci) => ({
           date: ci.checkInDate,
@@ -86,6 +96,7 @@ export const getCheckInStatus = async (req, res, next) => {
         totalCoins: user?.coins || 0,
         weekStart,
         weekEnd,
+        hasCompletedMissionToday: !!hasCompletedMissionToday,
       },
     });
   } catch (error) {
@@ -120,6 +131,22 @@ export const checkIn = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: "Bạn đã điểm danh hôm nay rồi",
+      });
+    }
+
+    // Require completing at least one mission today before allowing check-in
+    const todayStart = getTodayStart();
+    const completedMission = await UserMission.findOne({
+      user: userId,
+      status: "completed",
+      createdAt: { $gte: todayStart },
+    });
+
+    if (!completedMission) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Bạn phải hoàn thành ít nhất một nhiệm vụ trong trang Nhiệm vụ trước khi điểm danh hôm nay",
       });
     }
 
@@ -170,6 +197,61 @@ export const checkIn = async (req, res, next) => {
       { $inc: { coins: totalCoins } },
       { new: true }
     );
+
+    // Record as a completed mission for the user so it appears in missions/activity
+    try {
+      // find or create a canonical 'daily check-in' mission
+      let checkinMission = await Mission.findOne({ alias: "checkin_daily" });
+      if (!checkinMission) {
+        checkinMission = await Mission.create({
+          name: "Điểm danh hàng ngày",
+          description: "Nhận thưởng khi điểm danh hàng ngày",
+          provider: "",
+          url: "/checkin",
+          shortcut: "",
+          alias: "checkin_daily",
+          code: "",
+          reward: 0,
+          uses: 0,
+          singleUsePerUser: true,
+          status: "active",
+        });
+      }
+
+      // resolve client IP for record (same logic as missions)
+      const resolveClientIp = (req) => {
+        const xf =
+          req.headers["x-forwarded-for"] || req.headers["X-Forwarded-For"];
+        if (xf) {
+          const s = Array.isArray(xf) ? xf[0] : String(xf);
+          return s.split(",")[0].trim();
+        }
+        return (
+          req.ip ||
+          req.connection?.remoteAddress ||
+          req.socket?.remoteAddress ||
+          null
+        );
+      };
+      const clientIp = resolveClientIp(req);
+
+      // create a completed UserMission record tied to the canonical mission
+      await UserMission.create({
+        user: userId,
+        mission: checkinMission._id,
+        rewardGiven: totalCoins,
+        ip: clientIp || "",
+        deviceInfo: req.headers["user-agent"] || "",
+        status: "completed",
+      });
+
+      // increment mission uses
+      checkinMission.uses = (checkinMission.uses || 0) + 1;
+      await checkinMission.save();
+    } catch (e) {
+      // don't block check-in success if mission recording fails; log to console
+      console.error("Error recording check-in as mission:", e?.message || e);
+    }
 
     res.status(201).json({
       success: true,

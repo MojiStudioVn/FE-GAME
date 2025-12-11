@@ -427,6 +427,8 @@ export const updatePaymentConfig = async (req, res) => {
         partnerId,
         walletNumber,
         cardDiscount,
+        // record actor role so UIs can filter admin actions from regular user feeds
+        actorRole: req.user.role || "",
       },
     });
 

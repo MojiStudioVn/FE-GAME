@@ -113,6 +113,24 @@ export const login = async (req, res, next) => {
     // Generate token
     const token = generateToken(user._id, user.email, user.role);
 
+    // Decide cookie options safely:
+    // - Browsers require `SameSite=None` cookies to also have `Secure=true`.
+    // - For local dev over http, use `SameSite='lax'` so the cookie is accepted.
+    // - For HTTPS (production or behind ngrok with https), use `SameSite='none'` and `Secure=true`.
+    const isSecureRequest = req.secure || req.headers["x-forwarded-proto"] === "https" || config.NODE_ENV === "production";
+    const cookieOptions = {
+      httpOnly: true,
+      secure: Boolean(isSecureRequest),
+      sameSite: isSecureRequest ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    };
+
+    res.cookie("token", token, cookieOptions);
+    // Also store token in session for compatibility
+    if (req.session) req.session.token = token;
+
+    // Return user data and a note that cookie is set. Frontend should prefer cookie-based auth
     res.status(200).json({
       success: true,
       message: "Đăng nhập thành công",
@@ -129,9 +147,25 @@ export const login = async (req, res, next) => {
           isVerified: user.isVerified,
           createdAt: user.createdAt,
         },
+        // token still provided for clients that prefer header-based auth; do not store it in localStorage if possible
         token,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Logout user (clears auth cookie/session)
+// @route   POST /api/auth/logout
+// @access  Private
+export const logout = async (req, res, next) => {
+  try {
+    // Clear cookie
+    res.clearCookie("token", { path: "/" });
+    if (req.session) req.session.token = null;
+
+    res.status(200).json({ success: true, message: "Đăng xuất thành công" });
   } catch (error) {
     next(error);
   }
@@ -177,6 +211,7 @@ export const getMe = async (req, res, next) => {
 export const getMyDashboard = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const userRole = req.user.role || "user";
 
     const user = await User.findById(userId).lean();
     if (!user) {
@@ -207,26 +242,75 @@ export const getMyDashboard = async (req, res, next) => {
 
     // Recent activities for this user (from logs)
     // Search common fields and also meta.* fields in case logs store user info there
-    const recentLogs = await Log.find({
+    let recentLogs = await Log.find({
       $or: [
         { userId: userId },
         { userEmail: user.email },
         { "meta.userId": userId },
         { "meta.userEmail": user.email },
-        { "meta.user": user.username },
       ],
     })
       .sort({ timestamp: -1 })
       .limit(10)
       .lean();
 
+    // Exclude admin-actor logs from regular users' personal feed
+    if (userRole !== "admin") {
+      recentLogs = recentLogs.filter(
+        (l) =>
+          !(
+            l.meta &&
+            l.meta.actorRole === "admin" &&
+            String(l.userId) !== String(userId)
+          )
+      );
+    }
+
     const formattedLogs = recentLogs.map((log) => {
       const coinsMeta = log.meta?.coins || 0;
+
+      // Default action text
+      let actionText = log.message || "";
+
+      // Special handling for card-related logs to show user-friendly card info
+      const metaType = String(log.meta?.type || "").toLowerCase();
+      if (
+        metaType.includes("card") ||
+        /gửi thẻ|nạp thẻ|mua thẻ/i.test(log.message || "")
+      ) {
+        const code =
+          log.meta?.code ||
+          log.meta?.cardCode ||
+          log.meta?.card_code ||
+          log.meta?.codeMasked ||
+          log.meta?.cardCodeMasked ||
+          log.meta?.code_masked ||
+          "-";
+        const serial =
+          log.meta?.serial ||
+          log.meta?.cardSerial ||
+          log.meta?.card_serial ||
+          log.meta?.serialMasked ||
+          log.meta?.serial_masked ||
+          "-";
+        const value =
+          log.meta?.declaredValue ||
+          log.meta?.cardValue ||
+          log.meta?.value ||
+          log.meta?.card_value ||
+          "-";
+        const telco = log.meta?.telco || "-";
+
+        actionText = `NẠP THẺ: MÃ THẺ: ${code || "-"} - SERIAL: ${
+          serial || "-"
+        } - MỆNH GIÁ: ${value || "-"} - LOẠI THẺ: ${telco || "-"}`;
+      }
+
       return {
         id: log._id,
         type: (log.meta && log.meta.type) || (log.message || "").toLowerCase(),
-        user: log.userId?.username || log.userEmail || "System",
-        action: log.message,
+        user: log.userName || log.userId?.username || log.userEmail || "System",
+        action: actionText,
         amount:
           coinsMeta !== 0 ? `${coinsMeta > 0 ? "+" : ""}${coinsMeta} xu` : "",
         time: (() => {

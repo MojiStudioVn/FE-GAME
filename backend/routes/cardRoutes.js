@@ -4,6 +4,7 @@ import {
   cardCallback,
   getCardHistory,
   getAllCardTransactions,
+  getCardAudit,
   buyCard,
 } from "../controllers/cardController.js";
 import { verifyToken, isAdmin } from "../middleware/auth.js";
@@ -21,5 +22,7 @@ router.get("/callback", cardCallback);
 
 // Admin routes
 router.get("/admin/all", verifyToken, isAdmin, getAllCardTransactions);
+// Admin audit endpoint: returns full code/serial for authorized admin
+router.get("/admin/audit/:requestId", verifyToken, isAdmin, getCardAudit);
 
 export default router;

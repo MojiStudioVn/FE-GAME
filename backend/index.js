@@ -8,6 +8,7 @@ import authRoutes from "./routes/authRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
 import checkInRoutes from "./routes/checkInRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import { extractToken } from "./middleware/auth.js";
 import cardRoutes from "./routes/cardRoutes.js";
 import { cardCallback } from "./controllers/cardController.js";
 import giftTokenRoutes from "./routes/giftTokenRoutes.js";
@@ -104,6 +105,26 @@ app.use("/api/logs", logRoutes);
 app.use("/api/checkin", checkInRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/card", cardRoutes);
+
+// Debug logging for admin UI page requests (safe: does not log token values)
+app.use("/admin", (req, res, next) => {
+  try {
+    const { diagnostic } = extractToken(req);
+    if (config.NODE_ENV !== "production") {
+      console.info("[admin-page] Request:", {
+        method: req.method,
+        url: req.originalUrl || req.url,
+        hasAuthHeader: diagnostic.hasAuthHeader,
+        cookieNames: diagnostic.cookieNames,
+        hasSessionToken: diagnostic.hasSessionToken,
+        ip: req.ip || req.connection?.remoteAddress,
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
+  next();
+});
 
 // Public aliases for provider callbacks
 // Some providers expect callback to be at `/card/callback` (root) and may call via GET or POST.

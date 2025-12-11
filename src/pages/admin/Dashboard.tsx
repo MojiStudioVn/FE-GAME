@@ -84,9 +84,9 @@ export default function AdminDashboard() {
 
       // Fetch all data in parallel
       const [statsRes, usersRes, logsRes] = await Promise.all([
-        fetch(`${API_URL}/admin/dashboard/stats`, { headers }),
-        fetch(`${API_URL}/admin/top-users?limit=5`, { headers }),
-        fetch(`${API_URL}/admin/recent-logs?limit=20`, { headers }),
+        fetch(`${API_URL}/admin/dashboard/stats`, { headers, credentials: 'include' }),
+        fetch(`${API_URL}/admin/top-users?limit=5`, { headers, credentials: 'include' }),
+        fetch(`${API_URL}/admin/recent-logs?limit=20`, { headers, credentials: 'include' }),
       ]);
 
       if (!statsRes.ok || !usersRes.ok || !logsRes.ok) {

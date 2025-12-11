@@ -6,6 +6,17 @@ import User from "../models/User.js";
 import Log from "../models/Log.js";
 import PaymentConfig from "../models/PaymentConfig.js";
 
+// Mask sensitive strings (keep last 4 chars)
+const maskSensitive = (str) => {
+  try {
+    if (!str || typeof str !== "string") return "-";
+    if (str.length <= 4) return "****";
+    const last = str.slice(-4);
+    return "****" + last;
+  } catch (e) {
+    return "-";
+  }
+};
 // Configuration
 const DOMAIN_POST = process.env.CARD_DOMAIN_POST || "thenapvip.com";
 
@@ -127,6 +138,9 @@ export const chargeCard = async (req, res) => {
           telco,
           declaredValue: amount,
           status: response.data.status,
+          // store masked values only to avoid saving full sensitive data
+          codeMasked: maskSensitive(code),
+          serialMasked: maskSensitive(serial),
         },
       });
 
@@ -317,6 +331,9 @@ export const cardCallback = async (req, res) => {
             amount: coinAmount,
             status,
             statusText: status === 1 ? "Đúng mệnh giá" : "Sai mệnh giá",
+            // we avoid storing raw code/serial here; use masked versions
+            codeMasked: maskSensitive(transaction.code),
+            serialMasked: maskSensitive(transaction.serial),
           },
         });
 
@@ -340,8 +357,9 @@ export const cardCallback = async (req, res) => {
           requestId: request_id,
           transId: trans_id,
           telco,
-          code,
-          serial,
+          // mask sensitive values
+          codeMasked: maskSensitive(code),
+          serialMasked: maskSensitive(serial),
           message,
         },
       });
@@ -434,10 +452,29 @@ export const getAllCardTransactions = async (req, res) => {
       },
     ]);
 
+    // Compute totals only from successful transactions (status 1 or 2)
+    const successTotals = await CardTransaction.aggregate([
+      { $match: { status: { $in: [1, 2] }, amount: { $exists: true } } },
+      {
+        $group: {
+          _id: null,
+          totalSuccessAmount: { $sum: "$amount" },
+          successCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalSuccessAmount = successTotals[0]?.totalSuccessAmount || 0;
+    const successCount = successTotals[0]?.successCount || 0;
+
     res.status(200).json({
       success: true,
       data: transactions,
       stats,
+      totals: {
+        totalSuccessAmount,
+        successCount,
+      },
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -452,6 +489,78 @@ export const getAllCardTransactions = async (req, res) => {
       message: "Không thể lấy danh sách giao dịch",
       error: error.message,
     });
+  }
+};
+
+// @desc    Admin audit view for a card transaction (returns full code/serial)
+// @route   GET /api/admin/card/audit/:requestId
+// @access  Private/Admin
+export const getCardAudit = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!requestId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu requestId" });
+    }
+
+    // Try different matches: requestId, transId numeric, or document _id
+    const query = {
+      $or: [
+        { requestId: String(requestId) },
+        { transId: Number(requestId) },
+        { _id: requestId },
+      ],
+    };
+
+    const transaction = await CardTransaction.findOne(query).lean();
+
+    if (!transaction) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy giao dịch" });
+    }
+
+    // Log the audit access (do not store full sensitive values in audit log)
+    await Log.create({
+      action: "audit_view",
+      message: `Audit viewed card transaction ${requestId}`,
+      source: "backend",
+      userId: req.user.id,
+      userName: req.user.username || "",
+      userEmail: req.user.email || "",
+      meta: {
+        type: "card_audit",
+        requestId: transaction.requestId || requestId,
+        targetUserId: transaction.userId || null,
+      },
+    });
+
+    // Return full sensitive fields only to admin (middleware ensures admin)
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: transaction._id,
+        userId: transaction.userId,
+        requestId: transaction.requestId,
+        transId: transaction.transId,
+        telco: transaction.telco,
+        code: transaction.code,
+        serial: transaction.serial,
+        declaredValue: transaction.declaredValue,
+        cardValue: transaction.cardValue,
+        amount: transaction.amount,
+        status: transaction.status,
+        message: transaction.message,
+        createdAt: transaction.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ getCardAudit error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Lỗi server", error: error.message });
   }
 };
 

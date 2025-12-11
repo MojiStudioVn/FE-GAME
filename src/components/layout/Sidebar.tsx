@@ -47,7 +47,9 @@ const menuItems: MenuItem[] = [
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const { user } = useAuth();
+  // Read auth safely — some contexts may return undefined during hydration
+  const auth = useAuth();
+  const user = auth?.user ?? null;
 
   const getBreadcrumbs = () => {
     const path = location.pathname;

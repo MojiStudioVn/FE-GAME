@@ -52,7 +52,7 @@ const apiProviderSchema = new mongoose.Schema(
     },
     addedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
+      ref: "User",
       required: false,
     },
   },

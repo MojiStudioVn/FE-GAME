@@ -27,6 +27,7 @@ export default function AdminTransactions() {
       try {
         const token = localStorage.getItem('token');
         const res = await axios.get('/api/card/admin/all', {
+          withCredentials: true,
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.data && res.data.data) {

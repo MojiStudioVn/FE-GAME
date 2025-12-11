@@ -33,16 +33,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
-
-  // Fetch user profile
+  // Fetch user profile. Prefer cookie-based check, fall back to stored token.
   const refreshUser = async () => {
-    const storedToken = localStorage.getItem('token');
-    if (!storedToken) {
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
 
     try {
+      // First, try cookie-based check (server returns user when cookie sent)
+      try {
+        const checkRes = await fetch(`${API_URL}/auth/check`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData && checkData.success && checkData.data && checkData.data.user) {
+            setUser(checkData.data.user);
+            if (checkData.data.token) {
+              setToken(checkData.data.token);
+              localStorage.setItem('token', checkData.data.token);
+            }
+            logger.info('User refreshed via cookie');
+            return;
+          }
+        }
+      } catch (err) {
+        // non-fatal, we'll fallback to token-based
+        logger.info('Auth check via cookie failed, falling back to token', { error: String(err) });
+      }
+
+      // Fallback: use token from localStorage (header-based)
+      const storedToken = localStorage.getItem('token');
+      if (!storedToken) {
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(`${API_URL}/auth/me`, {
         headers: {
           'Authorization': `Bearer ${storedToken}`,
@@ -53,16 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         setUser(data.data);
         setToken(storedToken);
-        logger.info('User refreshed successfully');
+        logger.info('User refreshed via token');
       } else {
-        // Chỉ logout nếu token không hợp lệ (401), không phải lỗi server
         if (response.status === 401) {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           setToken(null);
           setUser(null);
         } else {
-          // Lỗi server khác, giữ user state từ localStorage
           const storedUser = localStorage.getItem('user');
           if (storedUser) {
             setUser(JSON.parse(storedUser));
@@ -72,13 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       logger.error('Error fetching user', error);
       console.error('Error fetching user:', error);
-      // Giữ user state từ localStorage thay vì logout
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
         try {
           setUser(JSON.parse(storedUser));
         } catch {
-          // localStorage bị lỗi, logout
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           setToken(null);
@@ -94,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -116,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (username: string, email: string, password: string) => {
     const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -136,11 +160,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Logout
   const logout = () => {
-    logger.info('User logged out');
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    // Call server to clear cookie/session then clear local state
+    try {
+      fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    } finally {
+      logger.info('User logged out');
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
   };
 
   // Update profile
@@ -151,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const response = await fetch(`${API_URL}/auth/profile`, {
       method: 'PUT',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,

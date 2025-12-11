@@ -7,7 +7,10 @@ import {
   getMyDashboard,
   updateProfile,
 } from "../controllers/authController.js";
-import { verifyToken } from "../middleware/auth.js";
+import { verifyToken, extractToken } from "../middleware/auth.js";
+import { logout } from "../controllers/authController.js";
+import jwt from "jsonwebtoken";
+import { config } from "../config/env.js";
 import { validate } from "../middleware/validator.js";
 
 const router = express.Router();
@@ -55,5 +58,32 @@ router.put(
   validate,
   updateProfile
 );
+// Logout (clears httpOnly cookie)
+router.post("/logout", verifyToken, logout);
+
+// Check auth status (client can call this to auto-detect if token exists/valid)
+router.get("/check", (req, res) => {
+  const { token, diagnostic } = extractToken(req);
+  if (!token) {
+    return res
+      .status(200)
+      .json({ success: false, authenticated: false, diagnostic });
+  }
+  try {
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+    if (config.NODE_ENV !== "production") {
+      console.info("[auth/check] token present, decoded:", {
+        sub: decoded?.id || decoded?.sub || null,
+      });
+    }
+    return res
+      .status(200)
+      .json({ success: true, authenticated: true, user: decoded });
+  } catch (e) {
+    return res
+      .status(200)
+      .json({ success: false, authenticated: false, error: e.message });
+  }
+});
 
 export default router;

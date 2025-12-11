@@ -67,6 +67,7 @@ export function GiftTokens() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/gift-tokens`, {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -89,6 +90,7 @@ export function GiftTokens() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/gift-tokens`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -121,6 +123,7 @@ export function GiftTokens() {
         `${API_URL}/admin/gift-tokens/${id}/toggle`,
         {
           method: 'PATCH',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -144,6 +147,7 @@ export function GiftTokens() {
         `${API_URL}/admin/gift-tokens/${id}`,
         {
           method: 'DELETE',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -170,6 +174,7 @@ export function GiftTokens() {
       const response = await fetch(
         `${API_URL}/admin/gift-tokens/${token._id}/usage`,
         {
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -193,6 +198,7 @@ export function GiftTokens() {
       const response = await fetch(
         `${API_URL}/admin/gift-tokens/export/csv`,
         {
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },

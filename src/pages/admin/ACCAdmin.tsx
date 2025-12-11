@@ -74,6 +74,7 @@ export default function ACCAdmin() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/parse-blob`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -138,6 +139,7 @@ export default function ACCAdmin() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/upload-account`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },

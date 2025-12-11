@@ -8,6 +8,11 @@
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "backfill:logs": "node scripts/backfillLogs.js"
+  },
   "keywords": [
     "nodejs",
     "express",

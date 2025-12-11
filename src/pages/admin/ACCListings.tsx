@@ -72,6 +72,7 @@ export default function ACCListings() {
           : `${API_URL}/admin/accounts?status=${filter === "all" ? "" : filter}`;
 
       const response = await fetch(url, {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -95,6 +96,7 @@ export default function ACCListings() {
         `${API_URL}/admin/accounts/${id}/hard-delete`,
         {
           method: "POST",
+          credentials: 'include',
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -122,7 +124,8 @@ export default function ACCListings() {
     try {
       const token = localStorage.getItem("adminToken");
       const response = await fetch(`${API_URL}/admin/cleanup-accounts`, {
-        method: "POST",
+        method: 'POST',
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },

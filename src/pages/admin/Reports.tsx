@@ -25,6 +25,7 @@ export default function AdminReports() {
         const token = localStorage.getItem('token');
         // Dashboard stats
         const statsRes = await axios.get('/api/admin/dashboard/stats', {
+          withCredentials: true,
           headers: { Authorization: `Bearer ${token}` }
         });
         if (statsRes.data && statsRes.data.data) {
@@ -41,6 +42,7 @@ export default function AdminReports() {
         }
         // Top users
         const usersRes = await axios.get('/api/admin/top-users', {
+          withCredentials: true,
           headers: { Authorization: `Bearer ${token}` }
         });
         if (usersRes.data && usersRes.data.data) {
@@ -52,6 +54,7 @@ export default function AdminReports() {
         }
         // Recent logs (mock topProducts from logs)
         const logsRes = await axios.get('/api/admin/recent-logs', {
+          withCredentials: true,
           headers: { Authorization: `Bearer ${token}` }
         });
         if (logsRes.data && logsRes.data.data) {

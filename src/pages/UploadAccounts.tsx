@@ -58,6 +58,7 @@ export default function UploadAccounts() {
       const token = localStorage.getItem('token');
       const res = await fetch('/api/admin/upload-accounts', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           Authorization: token ? `Bearer ${token}` : '',
         },

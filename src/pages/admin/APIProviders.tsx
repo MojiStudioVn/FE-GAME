@@ -54,6 +54,7 @@ export default function APIProviders() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/api-providers`, {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -96,6 +97,7 @@ export default function APIProviders() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/test-provider`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -132,6 +134,7 @@ export default function APIProviders() {
 
       const response = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -173,6 +176,7 @@ export default function APIProviders() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/api-providers/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },

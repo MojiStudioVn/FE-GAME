@@ -41,6 +41,7 @@ export default function AdminMissions() {
     try {
       // TODO: Replace with your API endpoint
       const res = await fetch("/api/admin/missions", {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       const data = await res.json();
@@ -56,6 +57,7 @@ export default function AdminMissions() {
     try {
       const res = await fetch(`/api/admin/missions/${id}`, {
         method: "DELETE",
+        credentials: 'include',
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!res.ok) throw new Error("Xóa thất bại");
@@ -85,6 +87,7 @@ export default function AdminMissions() {
 
       const res = await fetch(`/api/admin/missions/${m._id}`, {
         method: "PUT",
+        credentials: 'include',
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify(payload),
       });
@@ -110,6 +113,7 @@ export default function AdminMissions() {
 
       const shortcutRes = await fetch(`/api/admin/link-shortcut`, {
         method: "POST",
+        credentials: 'include',
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify(shortcutBody),
       });
@@ -141,6 +145,7 @@ export default function AdminMissions() {
       // 2. Lưu nhiệm vụ (gửi thêm các trường mới)
       const missionRes = await fetch(`/api/admin/missions`, {
         method: "POST",
+        credentials: 'include',
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify({
           name: form.name,
@@ -217,6 +222,7 @@ export default function AdminMissions() {
                 const token = localStorage.getItem("token");
                 console.log("Token gửi đi:", token);
                 fetch(`/api/admin/api-providers/${value}`, {
+                  credentials: 'include',
                   headers: { Authorization: `Bearer ${token}` }
                 })
                   .then(async res => {

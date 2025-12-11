@@ -38,6 +38,7 @@ export default function AdminSettings() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/settings`, {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -58,6 +59,7 @@ export default function AdminSettings() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/health-stats`, {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -80,6 +82,7 @@ export default function AdminSettings() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/settings`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -109,6 +112,7 @@ export default function AdminSettings() {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/admin/cleanup-now`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },

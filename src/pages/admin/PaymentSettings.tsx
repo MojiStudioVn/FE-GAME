@@ -50,6 +50,7 @@ export default function PaymentSettings() {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/card/buy`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           service_code: testService,
@@ -83,12 +84,14 @@ export default function PaymentSettings() {
     try {
       const token = localStorage.getItem('token');
       const depositRes = await fetch(`${API_URL}/admin/payment-config?type=recharge-card`, {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (depositRes.ok) {
         setDepositConfig(await depositRes.json());
       }
       const buyRes = await fetch(`${API_URL}/admin/payment-config?type=buy-card`, {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (buyRes.ok) {
@@ -107,6 +110,7 @@ export default function PaymentSettings() {
       const payload = { ...depositConfig, cardDiscount: Number(depositConfig.cardDiscount) || 0, type: 'recharge-card' };
       const res = await fetch(`${API_URL}/admin/payment-config`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
@@ -140,6 +144,7 @@ export default function PaymentSettings() {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/admin/payment-config`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ...buyConfig, type: 'buy-card' }),
       });
@@ -194,6 +199,7 @@ export default function PaymentSettings() {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/admin/withdraw-config`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           provider: withdrawConfig.provider,

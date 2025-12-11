@@ -12,7 +12,7 @@ const shortenedLinkSchema = new mongoose.Schema(
     // Admin who created the link
     adminId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
+      ref: "User",
       required: false, // Optional if user creates
     },
 

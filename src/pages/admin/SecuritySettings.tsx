@@ -61,6 +61,7 @@ export default function SecuritySettings() {
   const fetchSettings = async () => {
     try {
       const response = await fetch("/api/admin/settings", {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
         },
@@ -82,6 +83,7 @@ export default function SecuritySettings() {
     try {
       const response = await fetch("/api/admin/settings", {
         method: "PUT",
+        credentials: 'include',
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
@@ -98,6 +100,7 @@ export default function SecuritySettings() {
         setMessage({ type: "error", text: data.message });
       }
     } catch (error) {
+      console.error('Error saving security settings:', error);
       setMessage({ type: "error", text: "Lỗi khi cập nhật cài đặt" });
     } finally {
       setLoading(false);

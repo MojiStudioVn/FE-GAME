@@ -133,7 +133,7 @@ const accountListingSchema = new mongoose.Schema(
     // Metadata
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
+      ref: "User",
       required: true,
     },
   },

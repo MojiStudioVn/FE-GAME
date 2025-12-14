@@ -1,6 +1,7 @@
 import GiftToken from "../models/GiftToken.js";
 import GiftTokenUsage from "../models/GiftTokenUsage.js";
 import Log from "../models/Log.js";
+import { createUserLog } from "../utils/logService.js";
 
 // Generate random token code
 const generateTokenCode = () => {
@@ -71,12 +72,12 @@ export const createGiftToken = async (req, res) => {
     await giftToken.save();
 
     // Create log
-    await Log.create({
-      action: "CREATE_GIFT_TOKEN",
+    await createUserLog(req, {
       message: `Tạo mã quà tặng: ${giftToken.code} (${giftToken.coins} xu, tối đa ${giftToken.maxUses} lần)`,
       source: "backend",
-      userId: req.user.userId,
+      page: "/gift-token/create",
       meta: {
+        type: "create_gift_token",
         giftTokenId: giftToken._id,
         coins: giftToken.coins,
         maxUses: giftToken.maxUses,
@@ -133,13 +134,12 @@ export const toggleGiftToken = async (req, res) => {
     await giftToken.save();
 
     // Create log
-    await Log.create({
-      action: "TOGGLE_GIFT_TOKEN",
+    await createUserLog(req, {
       message: `${
         giftToken.isEnabled ? "Kích hoạt" : "Vô hiệu hóa"
       } mã quà tặng: ${giftToken.code}`,
       source: "backend",
-      userId: req.user.userId,
+      page: "/gift-token/toggle",
       meta: { giftTokenId: giftToken._id, isEnabled: giftToken.isEnabled },
     });
 
@@ -178,11 +178,10 @@ export const deleteGiftToken = async (req, res) => {
     await GiftToken.findByIdAndDelete(id);
 
     // Create log
-    await Log.create({
-      action: "DELETE_GIFT_TOKEN",
+    await createUserLog(req, {
       message: `Xóa mã quà tặng: ${giftToken.code}`,
       source: "backend",
-      userId: req.user.userId,
+      page: "/gift-token/delete",
       meta: { giftTokenId: id },
     });
 

@@ -4,6 +4,7 @@ import CardTransaction from "../models/CardTransaction.js";
 import CardPurchase from "../models/CardPurchase.js";
 import User from "../models/User.js";
 import Log from "../models/Log.js";
+import { createUserLog } from "../utils/logService.js";
 import PaymentConfig from "../models/PaymentConfig.js";
 
 // Mask sensitive strings (keep last 4 chars)
@@ -125,20 +126,16 @@ export const chargeCard = async (req, res) => {
       await transaction.save();
 
       // Create log
-      await Log.create({
-        action: "charge_card",
+      await createUserLog(req, {
         message: `Gửi thẻ: request ${requestId} - telco ${telco}`,
         source: "backend",
-        userId: req.user.id,
-        userName: req.user.username,
-        userEmail: req.user.email,
+        page: "/card/charge",
         meta: {
           type: "card_charge",
           requestId,
           telco,
           declaredValue: amount,
           status: response.data.status,
-          // store masked values only to avoid saving full sensitive data
           codeMasked: maskSensitive(code),
           serialMasked: maskSensitive(serial),
         },
@@ -313,13 +310,10 @@ export const cardCallback = async (req, res) => {
         await transaction.save();
 
         // Create log
-        await Log.create({
-          action: "card_success",
+        await createUserLog(req, {
           message: `Nạp thẻ thành công: request ${request_id} - trans ${trans_id}`,
           source: "backend",
-          userId: user._id,
-          userName: user.username,
-          userEmail: user.email,
+          page: "/card/callback",
           meta: {
             type: "card_recharge",
             requestId: request_id,
@@ -331,7 +325,6 @@ export const cardCallback = async (req, res) => {
             amount: coinAmount,
             status,
             statusText: status === 1 ? "Đúng mệnh giá" : "Sai mệnh giá",
-            // we avoid storing raw code/serial here; use masked versions
             codeMasked: maskSensitive(transaction.code),
             serialMasked: maskSensitive(transaction.serial),
           },
@@ -345,23 +338,21 @@ export const cardCallback = async (req, res) => {
       }
     } else if (status === 3) {
       // Card error
-      await Log.create({
-        action: "card_error",
+      await createUserLog(req, {
         message: `Lỗi nạp thẻ: request ${request_id} - ${message}`,
         source: "backend",
-        userId: transaction.userId,
-        userName: "",
-        userEmail: "",
+        page: "/card/callback",
         meta: {
           type: "card_error",
           requestId: request_id,
           transId: trans_id,
           telco,
-          // mask sensitive values
           codeMasked: maskSensitive(code),
           serialMasked: maskSensitive(serial),
           message,
         },
+        // in some callbacks req.user may be empty; include userId from transaction if available
+        userId: transaction?.userId || undefined,
       });
     }
 
@@ -523,13 +514,10 @@ export const getCardAudit = async (req, res) => {
     }
 
     // Log the audit access (do not store full sensitive values in audit log)
-    await Log.create({
-      action: "audit_view",
+    await createUserLog(req, {
       message: `Audit viewed card transaction ${requestId}`,
       source: "backend",
-      userId: req.user.id,
-      userName: req.user.username || "",
-      userEmail: req.user.email || "",
+      page: "/admin/card/audit",
       meta: {
         type: "card_audit",
         requestId: transaction.requestId || requestId,
@@ -639,13 +627,10 @@ export const buyCard = async (req, res) => {
       await purchase.save();
 
       // Log
-      await Log.create({
-        action: "buy_card",
+      await createUserLog(req, {
         message: `Mua thẻ: request ${requestId} - service ${service_code}`,
         source: "backend",
-        userId: req.user.id,
-        userName: req.user.username || "",
-        userEmail: req.user.email || "",
+        page: "/card/buy",
         meta: {
           type: "card_buy",
           requestId,
@@ -668,13 +653,10 @@ export const buyCard = async (req, res) => {
       };
       await purchase.save();
 
-      await Log.create({
-        action: "buy_card_error",
+      await createUserLog(req, {
         message: `Lỗi mua thẻ: request ${requestId} - ${apiErr?.message}`,
         source: "backend",
-        userId: req.user.id,
-        userName: req.user.username || "",
-        userEmail: req.user.email || "",
+        page: "/card/buy",
         meta: {
           type: "card_buy_error",
           requestId,

@@ -4,6 +4,7 @@ import {
   getClientIP,
   hashIP,
 } from "../utils/security.js";
+import { config } from "../config/env.js";
 
 /**
  * CSRF Protection Middleware
@@ -94,7 +95,34 @@ export const userSessionConfig = {
  */
 export const httpsRedirect = (req, res, next) => {
   if (process.env.NODE_ENV === "production" && !req.secure) {
-    return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    // If proxy set X-Forwarded-Proto to https, treat as secure
+    const forwardedProto =
+      (req.get && req.get("X-Forwarded-Proto")) ||
+      req.headers["x-forwarded-proto"];
+    if (forwardedProto && forwardedProto.toLowerCase() === "https") {
+      return next();
+    }
+
+    // Prefer configured CLIENT_URL to avoid redirecting to internal host (127.0.0.1)
+    // Parse CLIENT_URL safely: if it's a full URL, use its host; otherwise
+    // strip any leading protocol-like sequences and trailing path.
+    let hostForRedirect = req.headers.host || "localhost";
+    if (config && config.CLIENT_URL) {
+      const raw = String(config.CLIENT_URL).trim();
+      try {
+        // Try parsing as a full URL first
+        const parsed = new URL(raw);
+        if (parsed.host) hostForRedirect = parsed.host;
+      } catch (e) {
+        // Not a full URL, clean it: remove repeated protocols and any path
+        let cleaned = raw.replace(/^(?:https?:\/\/)*/i, "");
+        const slashIdx = cleaned.indexOf("/");
+        if (slashIdx !== -1) cleaned = cleaned.slice(0, slashIdx);
+        if (cleaned) hostForRedirect = cleaned;
+      }
+    }
+
+    return res.redirect(301, `https://${hostForRedirect}${req.url}`);
   }
   next();
 };

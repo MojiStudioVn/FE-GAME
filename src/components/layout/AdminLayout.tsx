@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { AdminFooter } from '@cybernixvn/footer-protect';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -19,7 +20,6 @@ import {
   Upload,
 } from 'lucide-react';
 import { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -132,8 +132,8 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
                   <button
                     onClick={() => setExpandedMenu(open ? null : (item.label as string))}
                     className={`flex items-center justify-between gap-3 w-full px-3 py-2 rounded-lg transition-colors ${
-                      open ? 'bg-white text-black' : 'hover:bg-neutral-800 text-neutral-400'
-                    }`}
+                        open ? 'bg-white text-black' : 'hover:bg-neutral-800 text-neutral-400'
+                      }`}
                   >
                     <div className="flex items-center gap-3">
                       {Icon && <Icon size={20} />}
@@ -153,9 +153,9 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
                       {children.map((c) => (
                         <NavLink
                           key={c.path}
-                          to={c.path}
+                          to={c.path!}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={({ isActive }) =>
+                            className={({ isActive }) =>
                             `block px-3 py-1 rounded-md text-sm transition-colors ${
                               isActive ? 'bg-white text-black' : 'hover:bg-neutral-800 text-neutral-400'
                             }`
@@ -174,7 +174,7 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
             return (
               <NavLink
                 key={item.path}
-                to={item.path}
+                to={item.path!}
                 end
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={({ isActive }) =>
@@ -206,7 +206,10 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-black pt-16 lg:pt-0">
-        {children}
+        <div className="min-h-[calc(100vh-4rem)]">
+          {children}
+        </div>
+        <AdminFooter />
       </main>
     </div>
   );

@@ -8,10 +8,12 @@
     "dev:server": "cd backend && npm run dev",
     "server": "cd backend && npm start",
     "build": "tsc && vite build",
+    "postbuild": "node ./scripts/copy-htaccess.cjs",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cybernixvn/footer-protect": "^1.0.10",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.4",
     "@radix-ui/react-aspect-ratio": "^1.1.1",
@@ -50,20 +52,29 @@
     "embla-carousel-react": "^8.5.2",
     "express": "^5.2.1",
     "express-validator": "^7.3.1",
+    "framer-motion": "^10.18.0",
     "gsap": "^3.14.1",
     "input-otp": "^1.4.1",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.487.0",
     "mongoose": "^9.0.0",
+    "next-themes": "^0.2.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.45.0",
     "react-resizable-panels": "^2.1.7",
     "react-router-dom": "^6.28.0",
     "recharts": "^2.15.0",
+    "socket.io-client": "^4.7.2",
     "sonner": "^1.7.3",
     "tailwind-merge": "^2.5.5",
     "vaul": "^1.0.0"
+  },
+  "dependenciesMeta": {
+    "@cybernixvn/footer-protect": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

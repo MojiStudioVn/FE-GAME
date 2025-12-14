@@ -1,5 +1,6 @@
 import AccountListing from "../models/AccountListing.js";
 import AdminLog from "../models/AdminLog.js";
+import UploadJob from "../models/UploadJob.js";
 
 // Auto-parse blob text (username:password\nHeroes:...\nSkins:...\nSS:...\nSSS:...\nLevel:...\nRank:...\nCountry:...)
 const parseAccountBlob = (blob) => {
@@ -235,11 +236,38 @@ export const uploadAccount = async (req, res) => {
 // Get all account listings (with filters)
 export const getAccountListings = async (req, res) => {
   try {
-    const { status, saleType, page = 1, limit = 20 } = req.query;
+    const {
+      status,
+      saleType,
+      page = 1,
+      limit = 20,
+      q,
+      accountType,
+      minPrice,
+      maxPrice,
+    } = req.query;
 
     const filter = {};
     if (status) filter.status = status;
     if (saleType) filter.saleType = saleType;
+    if (accountType) filter.accountType = accountType;
+
+    // price range
+    const priceFilter = {};
+    if (minPrice !== undefined && minPrice !== null && minPrice !== "")
+      priceFilter.$gte = Number(minPrice);
+    if (maxPrice !== undefined && maxPrice !== null && maxPrice !== "")
+      priceFilter.$lte = Number(maxPrice);
+    if (Object.keys(priceFilter).length > 0) filter.price = priceFilter;
+
+    // text search on username / description
+    if (q) {
+      const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      filter.$or = [
+        { username: { $regex: safe, $options: "i" } },
+        { description: { $regex: safe, $options: "i" } },
+      ];
+    }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -540,7 +568,7 @@ export const getRecentAccounts = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(20)
       .select(
-        "username images status saleType price currentBid auctionEndTime soldAt createdAt"
+        "username images status saleType accountType price currentBid auctionEndTime soldAt createdAt"
       )
       .populate("uploadedBy", "username")
       .populate("soldTo", "username");
@@ -558,6 +586,80 @@ export const getRecentAccounts = async (req, res) => {
   }
 };
 
+// Public: find accounts by skin name (also searches ssCards and sssCards)
+export const getAccountsBySkin = async (req, res) => {
+  try {
+    const {
+      skin = "",
+      game,
+      minPrice,
+      maxPrice,
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    if (!skin) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng cung cấp tham số `skin`" });
+    }
+
+    const safe = skin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(safe, "i");
+
+    const filter = { status: "active" };
+    if (game) filter.game = game;
+
+    // price filter
+    const priceFilter = {};
+    if (minPrice !== undefined && minPrice !== null && minPrice !== "")
+      priceFilter.$gte = Number(minPrice);
+    if (maxPrice !== undefined && maxPrice !== null && maxPrice !== "")
+      priceFilter.$lte = Number(maxPrice);
+    if (Object.keys(priceFilter).length > 0) filter.price = priceFilter;
+
+    // search in skins, ssCards, sssCards, and username
+    filter.$or = [
+      { skins: { $elemMatch: { $regex: regex } } },
+      { ssCards: { $elemMatch: { $regex: regex } } },
+      { sssCards: { $elemMatch: { $regex: regex } } },
+      { username: { $regex: regex } },
+      { displayName: { $regex: regex } },
+    ];
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const accounts = await AccountListing.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select(
+        "username displayName skins ssCards sssCards level rank price saleType uploadedBy images totalSkins heroes"
+      )
+      .populate("uploadedBy", "username");
+
+    const total = await AccountListing.countDocuments(filter);
+
+    res
+      .status(200)
+      .json({
+        success: true,
+        accounts,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit)),
+        },
+      });
+  } catch (error) {
+    console.error("Error in getAccountsBySkin:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Lỗi khi tìm kiếm theo skin" });
+  }
+};
+
 // Upload accounts from a file (txt or docx)
 export const uploadAccountsFile = async (req, res) => {
   try {
@@ -570,36 +672,7 @@ export const uploadAccountsFile = async (req, res) => {
         .json({ success: false, message: "Vui lòng gửi file .txt hoặc .docx" });
     }
 
-    const fs = await import("fs").then((m) => m.promises);
-    const path = await import("path");
-
-    const ext = path.extname(file.originalname).toLowerCase();
-    let content = "";
-
-    if (ext === ".txt") {
-      content = await fs.readFile(file.path, "utf-8");
-    } else if (ext === ".docx") {
-      // DOCX parsing not implemented server-side; return error for now
-      return res.status(400).json({
-        success: false,
-        message: "Chưa hỗ trợ parse .docx trên server. Vui lòng dùng .txt",
-      });
-    } else {
-      return res
-        .status(400)
-        .json({ success: false, message: "Định dạng file không hợp lệ" });
-    }
-
-    // Each line is one account entry
-    const lines = content
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const created = [];
-    const errors = [];
-
     // Require admin identity to set uploadedBy (accept req.user from verifyToken)
-    // Note: verifyToken places decoded token on `req.user` with field `id`, not `_id`.
     const adminId = req.admin?._id || req.user?._id || req.user?.id;
     if (!adminId) {
       return res.status(403).json({
@@ -608,137 +681,369 @@ export const uploadAccountsFile = async (req, res) => {
       });
     }
 
-    // helper to normalize keys (remove diacritics, spaces, lowercase)
-    const stripDiacritics = (s = "") =>
-      s
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^\w\s]/g, "")
-        .toLowerCase()
-        .replace(/\s+/g, "");
+    // Create a job entry and process the file asynchronously so we can return immediately
+    const job = await UploadJob.create({
+      adminId,
+      filename: file.originalname,
+      status: "queued",
+      progress: 0,
+    });
 
-    for (const [idx, line] of lines.entries()) {
-      // Fields separated by |
-      const parts = line
-        .split("|")
-        .map((p) => p.trim())
-        .filter(Boolean);
-      if (parts.length < 2) {
-        errors.push({ line: idx + 1, reason: "Thiếu account|password" });
-        continue;
-      }
-
-      const username = parts[0];
-      const password = parts[1];
-
-      // Defaults
-      let heroes = [];
-      let skins = [];
-      let ssCards = [];
-      let sssCards = [];
-      let level = 1;
-      let rank = "Unranked";
-      let country = "Vietnam";
-      const otherExtras = [];
-
-      // Parse extras (KEY : VALUE) if present
-      const extras = parts.slice(2);
-      for (const extra of extras) {
-        // split by first ':' or '：'
-        const sepIndex = extra.indexOf(":");
-        if (sepIndex === -1) {
-          otherExtras.push(extra);
-          continue;
-        }
-        const key = extra.slice(0, sepIndex).trim();
-        const val = extra.slice(sepIndex + 1).trim();
-
-        const nk = stripDiacritics(key);
-
-        if (nk.includes("level")) {
-          const parsed = parseInt(val.replace(/[^0-9]/g, ""));
-          if (!isNaN(parsed)) level = parsed;
-          else otherExtras.push(extra);
-        } else if (
-          nk.includes("rank") ||
-          nk.includes("hang") ||
-          nk.includes("hang")
-        ) {
-          rank = val;
-        } else if (nk.includes("skin")) {
-          // split multiple skins by comma or '|' or ';'
-          const items = val
-            .split(/,|;|\|/)
-            .map((i) => i.trim())
-            .filter(Boolean);
-          skins = skins.concat(items);
-        } else if (nk.includes("tuong")) {
-          const items = val
-            .split(/,|;|\|/)
-            .map((i) => i.trim())
-            .filter(Boolean);
-          heroes = heroes.concat(items);
-        } else if (nk === "ss") {
-          const items = val
-            .split(/,|;|\|/)
-            .map((i) => i.trim())
-            .filter(Boolean);
-          ssCards = ssCards.concat(items);
-        } else if (nk === "sss") {
-          const items = val
-            .split(/,|;|\|/)
-            .map((i) => i.trim())
-            .filter(Boolean);
-          sssCards = sssCards.concat(items);
-        } else if (nk.includes("country") || nk.includes("vung")) {
-          country = val;
-        } else {
-          otherExtras.push(extra);
-        }
-      }
-
-      const description = otherExtras.length > 0 ? otherExtras.join(" | ") : "";
-
-      // Create AccountListing record
-      const accountData = {
-        username,
-        password,
-        images: [],
-        heroes,
-        skins,
-        ssCards,
-        sssCards,
-        level,
-        rank,
-        country,
-        saleType: "fixed",
-        description: description || undefined,
-        uploadedBy: adminId,
-      };
-
+    // Start background processing (do not await)
+    (async () => {
       try {
-        const acc = await AccountListing.create(accountData);
-        created.push({ id: acc._id, username: acc.username });
-      } catch (err) {
-        errors.push({ line: idx + 1, reason: err.message });
+        await UploadJob.findByIdAndUpdate(job._id, {
+          status: "processing",
+          progress: 1,
+          message: "Đang đọc file",
+        });
+
+        const fs = await import("fs").then((m) => m.promises);
+        const path = await import("path");
+
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext !== ".txt") {
+          await UploadJob.findByIdAndUpdate(job._id, {
+            status: "failed",
+            message: "Chỉ hỗ trợ .txt trên server",
+          });
+          return;
+        }
+
+        const content = await fs.readFile(file.path, "utf-8");
+        const lines = content
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+
+        const created = [];
+        const errors = [];
+
+        // helper to normalize keys (remove diacritics, spaces, lowercase)
+        const stripDiacritics = (s = "") =>
+          s
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^\w\s]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, "");
+
+        const batchPrice =
+          req.body && req.body.price ? parseInt(req.body.price) || 0 : 0;
+
+        // Process lines with incremental progress updates
+        for (const [idx, line] of lines.entries()) {
+          // update progress every 20 lines
+          if (idx % 20 === 0) {
+            const pct = Math.floor((idx / Math.max(1, lines.length)) * 100);
+            await UploadJob.findByIdAndUpdate(job._id, {
+              progress: pct,
+              message: `Đang xử lý ${idx}/${lines.length}`,
+            });
+          }
+
+          const parts = line
+            .split("|")
+            .map((p) => p.trim())
+            .filter(Boolean);
+          if (parts.length < 2) {
+            errors.push({ line: idx + 1, reason: "Thiếu account|password" });
+            continue;
+          }
+
+          const username = parts[0];
+          const password = parts[1];
+
+          // Defaults
+          let heroes = [];
+          let skins = [];
+          let ssCards = [];
+          let sssCards = [];
+          let level = 1;
+          let rank = "Unranked";
+          let country = "Vietnam";
+          let displayName = undefined;
+          // additional explicit fields
+          let heroesCount = 0;
+          let skinsCount = 0;
+          let qh = 0;
+          let soCount = 0;
+          let createdAtOriginal = undefined;
+          let lsnap = undefined;
+          let lastPasswordChange = undefined;
+          let lastPhoneChange = undefined;
+          let hasCmnd = false;
+          let hasEmail = false;
+          let emailStatus = "";
+          let hasAuthen = false;
+          let hasPhone = false;
+          let fbStatus = "";
+          let isBanned = false;
+          let ssCount = 0;
+          let sssCount = 0;
+          let animeCount = 0;
+          let sssAndAnime = "";
+          let accountState = "";
+          const otherExtras = [];
+
+          const extras = parts.slice(2);
+          for (const extra of extras) {
+            const sepIndex = extra.indexOf(":");
+            if (sepIndex === -1) {
+              otherExtras.push(extra);
+              continue;
+            }
+            const key = extra.slice(0, sepIndex).trim();
+            const val = extra.slice(sepIndex + 1).trim();
+            const nk = stripDiacritics(key);
+            const keyLower = key.toLowerCase();
+
+            if (nk.includes("level")) {
+              const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+              if (!isNaN(parsed)) level = parsed;
+              else otherExtras.push(extra);
+            } else if (nk.includes("rank") || nk.includes("hang")) {
+              rank = val;
+            } else if (
+              nk.includes("skin") &&
+              (keyLower.includes("skin ss") ||
+                nk.includes("skinss") ||
+                keyLower.includes("skin_ss"))
+            ) {
+              const items = val
+                .split(/,|;|\|/)
+                .map((i) => i.trim())
+                .filter(Boolean);
+              ssCards = ssCards.concat(items);
+            } else if (
+              nk.includes("skin") &&
+              (keyLower.includes("skin sss") ||
+                nk.includes("skinsss") ||
+                keyLower.includes("skin_sss"))
+            ) {
+              const items = val
+                .split(/,|;|\|/)
+                .map((i) => i.trim())
+                .filter(Boolean);
+              sssCards = sssCards.concat(items);
+            } else if (
+              nk.includes("skin") &&
+              (keyLower.includes("skin name") ||
+                keyLower.includes("skinname") ||
+                keyLower.includes("skin ") ||
+                nk === "skin")
+            ) {
+              const items = val
+                .split(/,|;|\|/)
+                .map((i) => i.trim())
+                .filter(Boolean);
+              skins = skins.concat(items);
+              const parsedCount = parseInt(val.replace(/[^0-9]/g, ""));
+              if (!isNaN(parsedCount)) skinsCount = parsedCount;
+            } else if (nk.includes("tuong")) {
+              const items = val
+                .split(/,|;|\|/)
+                .map((i) => i.trim())
+                .filter(Boolean);
+              heroes = heroes.concat(items);
+              const parsedCount = parseInt(val.replace(/[^0-9]/g, ""));
+              if (!isNaN(parsedCount)) heroesCount = parsedCount;
+            } else if (nk === "ss") {
+              const items = val
+                .split(/,|;|\|/)
+                .map((i) => i.trim())
+                .filter(Boolean);
+              ssCards = ssCards.concat(items);
+              const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+              if (!isNaN(parsed)) ssCount = parsed;
+            } else if (nk === "sss") {
+              const items = val
+                .split(/,|;|\|/)
+                .map((i) => i.trim())
+                .filter(Boolean);
+              sssCards = sssCards.concat(items);
+              const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+              if (!isNaN(parsed)) sssCount = parsed;
+            } else if (
+              nk.includes("name") ||
+              nk.includes("ten") ||
+              nk.includes("ingame")
+            ) {
+              displayName = val;
+            } else if (nk.includes("country") || nk.includes("vung")) {
+              country = val;
+            } else if (nk.includes("cmnd")) {
+              hasCmnd = /yes|true|có|co/i.test(val);
+            } else if (nk.includes("email")) {
+              hasEmail = /yes|true|có|co/i.test(val);
+              if (/xac/i.test(val) || /verified/i.test(val))
+                emailStatus = "verified";
+              else emailStatus = val;
+            } else if (nk.includes("authen") || nk.includes("2fa")) {
+              hasAuthen = /yes|true|có|co/i.test(val);
+            } else if (nk.includes("sdt") || nk.includes("phone")) {
+              hasPhone = /yes|true|có|co/i.test(val);
+            } else if (nk.includes("fb") || keyLower.includes("facebook")) {
+              fbStatus = val;
+            } else {
+              // additional known patterns
+              if (nk.includes("qh") || nk.includes("quanhu")) {
+                const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+                if (!isNaN(parsed)) qh = parsed;
+                else otherExtras.push(extra);
+              } else if (nk.includes("so") && !nk.includes("skin")) {
+                const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+                if (!isNaN(parsed)) soCount = parsed;
+                else otherExtras.push(extra);
+              } else if (
+                nk.includes("tao") ||
+                nk.includes("taoaccount") ||
+                nk.includes("taoaccount")
+              ) {
+                createdAtOriginal = val;
+              } else if (nk.includes("lsnap")) {
+                lsnap = val;
+              } else if (
+                nk.includes("doi pass") ||
+                nk.includes("doipass") ||
+                nk.includes("doipassgannhat") ||
+                nk.includes("doipassgannhat")
+              ) {
+                lastPasswordChange = val;
+              } else if (
+                nk.includes("doi sdt") ||
+                nk.includes("doisdt") ||
+                nk.includes("doisdtgannhat")
+              ) {
+                lastPhoneChange = val;
+              } else if (nk.includes("band")) {
+                isBanned =
+                  /yes|true|có|co/i.test(val) || /yes/i.test(val)
+                    ? /yes|true|có|co/i.test(val)
+                    : false;
+              } else if (nk.includes("anime")) {
+                const parsed = parseInt(val.replace(/[^0-9]/g, ""));
+                if (!isNaN(parsed)) animeCount = parsed;
+                else sssAndAnime = val;
+              } else if (
+                nk.includes("sss&anime") ||
+                nk.includes("sssandanime") ||
+                nk.includes("sssandanime")
+              ) {
+                sssAndAnime = val;
+              } else if (
+                nk.includes("tinh trang") ||
+                nk.includes("tinhtrang") ||
+                nk.includes("tìnhtrạng")
+              ) {
+                accountState = val;
+              } else {
+                otherExtras.push(extra);
+              }
+            }
+          }
+
+          const accountData = {
+            username,
+            password,
+            images: [],
+            heroes,
+            skins,
+            ssCards,
+            sssCards,
+            level,
+            rank,
+            country,
+            // explicit parsed fields (no description aggregation)
+            displayName,
+            heroesCount,
+            skinsCount,
+            qh,
+            soCount,
+            createdAtOriginal,
+            lsnap,
+            lastPasswordChange,
+            lastPhoneChange,
+            hasCmnd,
+            hasEmail,
+            emailStatus,
+            hasAuthen,
+            hasPhone,
+            fbStatus,
+            isBanned,
+            ssCount,
+            sssCount,
+            animeCount,
+            sssAndAnime,
+            accountState,
+            saleType: "fixed",
+            accountType: type === "random" ? "random" : "checked-account",
+            uploadedBy: adminId,
+          };
+
+          if (batchPrice && batchPrice > 0) accountData.price = batchPrice;
+
+          try {
+            const acc = await AccountListing.create(accountData);
+            created.push({ id: acc._id, username: acc.username });
+          } catch (err) {
+            errors.push({ line: idx + 1, reason: err.message });
+          }
+        }
+
+        // final update
+        await UploadJob.findByIdAndUpdate(job._id, {
+          status: "done",
+          progress: 100,
+          message: "Đã xử lý xong",
+          result: { createdCount: created.length, errorsCount: errors.length },
+        });
+
+        // Log admin action
+        if (adminId) {
+          await AdminLog.create({
+            adminId,
+            action: "bulk_upload_accounts",
+            details: `Upload ${created.length} accounts from file ${file.originalname}`,
+            metadata: {
+              createdCount: created.length,
+              errorsCount: errors.length,
+            },
+          });
+        }
+      } catch (bgErr) {
+        console.error("Background upload processing failed:", bgErr);
+        await UploadJob.findByIdAndUpdate(job._id, {
+          status: "failed",
+          message: String(bgErr),
+        });
       }
-    }
+    })();
 
-    // Log admin action if admin present
-    if (req.admin && req.admin._id) {
-      await AdminLog.create({
-        adminId: req.admin._id,
-        action: "bulk_upload_accounts",
-        details: `Upload ${created.length} accounts from file ${file.originalname}`,
-        metadata: { createdCount: created.length, errorsCount: errors.length },
-      });
-    }
-
-    res.status(200).json({ success: true, created, errors });
+    // immediate response with job id so frontend can poll
+    res.status(202).json({ success: true, jobId: job._id });
   } catch (error) {
     console.error("Error uploading accounts file:", error);
     res
       .status(500)
       .json({ success: false, message: "Lỗi khi xử lý file upload" });
+  }
+};
+
+// Get upload job status
+export const getUploadJobStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const job = await UploadJob.findById(id);
+    if (!job)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy job" });
+    res.status(200).json({ success: true, job });
+  } catch (error) {
+    console.error("Error fetching upload job:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Lỗi khi lấy trạng thái job" });
   }
 };

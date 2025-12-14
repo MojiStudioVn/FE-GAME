@@ -1,5 +1,5 @@
 import User from "../models/User.js";
-import Log from "../models/Log.js";
+import { createUserLog } from "../utils/logService.js";
 import bcrypt from "bcryptjs";
 
 // @desc    Get all users with pagination and filters
@@ -126,15 +126,14 @@ export const adjustUserCoins = async (req, res) => {
     user.coins = newCoins;
     await user.save();
 
-    // Create log
-    await Log.create({
+    // Create log (record target user in the log)
+    await createUserLog(req, {
       level: "info",
       message: `Admin điều chỉnh xu cho user ${user.username}: ${
         amount > 0 ? "+" : ""
       }${amount} xu`,
-      source: "admin",
-      userId: user._id,
-      userEmail: user.email,
+      source: "backend",
+      page: "/admin/users/adjust-coins",
       meta: {
         type: "admin_adjust",
         coins: amount,
@@ -144,6 +143,8 @@ export const adjustUserCoins = async (req, res) => {
         oldCoins: user.coins - amount,
         newCoins: user.coins,
       },
+      userId: user._id,
+      userEmail: user.email,
     });
 
     res.status(200).json({
@@ -241,19 +242,20 @@ export const updateUserStatus = async (req, res) => {
       });
     }
 
-    // Create log
-    await Log.create({
+    // Create log (record target user in the log)
+    await createUserLog(req, {
       level: "info",
       message: `Admin thay đổi trạng thái user ${user.username} thành ${status}`,
-      source: "admin",
-      userId: user._id,
-      userEmail: user.email,
+      source: "backend",
+      page: "/admin/users/status",
       meta: {
         type: "status_change",
         newStatus: status,
         adminId: req.user.id,
         adminEmail: req.user.email,
       },
+      userId: user._id,
+      userEmail: user.email,
     });
 
     res.status(200).json({
@@ -301,14 +303,12 @@ export const updateUser = async (req, res) => {
 
     await user.save();
 
-    // Create log
-    await Log.create({
+    // Create log (admin action)
+    await createUserLog(req, {
       action: "admin_update_user",
       message: `Admin cập nhật user ${userId}`,
       source: "backend",
-      userId: req.user.id,
-      userName: req.user.username,
-      userEmail: req.user.email,
+      page: "/admin/users/update",
       meta: {
         type: "user_update",
         targetUserId: userId,
@@ -363,13 +363,11 @@ export const resetUserPassword = async (req, res) => {
     await user.save();
 
     // Create log
-    await Log.create({
+    await createUserLog(req, {
       action: "admin_reset_password",
       message: `Admin đặt lại mật khẩu cho user ${user.username}`,
       source: "backend",
-      userId: req.user.id,
-      userName: req.user.username,
-      userEmail: req.user.email,
+      page: "/admin/users/reset-password",
       meta: {
         type: "password_reset",
         targetUserId: userId,
@@ -416,13 +414,11 @@ export const deleteUser = async (req, res) => {
     }
 
     // Create log before deleting
-    await Log.create({
+    await createUserLog(req, {
       action: "admin_delete_user",
       message: `Admin xóa user ${user.username} (${userId})`,
       source: "backend",
-      userId: req.user.id,
-      userName: req.user.username,
-      userEmail: req.user.email,
+      page: "/admin/users/delete",
       meta: {
         type: "user_delete",
         deletedUserId: userId,

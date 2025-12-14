@@ -17,6 +17,12 @@ export default defineConfig(({ mode }) => {
       port: parseInt(env.VITE_PORT || "5173"),
       allowedHosts: ["scorpioid-municipal-maude.ngrok-free.dev"],
       host: true,
+      // Allow CORS for development (accept requests from tunnel/ngrok origins)
+      // `cors` accepts boolean or CorsOptions passed to the `cors` middleware.
+      cors: {
+        origin: true,
+        credentials: true,
+      },
       proxy: {
         "/api": "http://localhost:5000",
       },

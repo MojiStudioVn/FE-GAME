@@ -1,4 +1,6 @@
 import express from "express";
+import http from "http";
+import { Server as IOServer } from "socket.io";
 import cors from "cors";
 import session from "express-session";
 import helmet from "helmet";
@@ -18,6 +20,10 @@ import apiProviderRoutes from "./routes/apiProviderRoutes.js";
 import linkShortenerRoutes from "./routes/linkShortenerRoutes.js";
 import missionRoutes from "./routes/missionRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
+import ChatMessage from "./models/ChatMessage.js";
+import exchangeRoutes from "./routes/exchangeRoutes.js";
+import purchaseRoutes from "./routes/purchaseRoutes.js";
 
 import { errorHandler } from "./middleware/errorHandler.js";
 import {
@@ -31,6 +37,25 @@ import orderDisputeRoutes from "./routes/orderDisputeRoutes.js";
 
 // Create Express app
 const app = express();
+
+// When behind a reverse proxy (Apache/nginx) trust the first proxy so
+// req.ip and req.secure reflect the original request. This prevents
+// incorrect HTTP->HTTPS redirects when SSL is terminated at Apache.
+app.set("trust proxy", 1);
+
+// Request logging for debugging unexpected HTML responses
+app.use((req, res, next) => {
+  try {
+    console.log(
+      `[req] ${req.method} ${req.originalUrl || req.url} host=${
+        req.headers.host
+      } accept=${req.headers.accept}`
+    );
+  } catch (e) {
+    // ignore logging errors
+  }
+  next();
+});
 
 // Security Middleware (apply first)
 app.use(httpsRedirect); // Redirect HTTP to HTTPS in production
@@ -63,6 +88,35 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Development helper: ensure CORS headers are present for any origin (ngrok, local tunnels)
+// This middleware echoes the request Origin back and handles OPTIONS preflights.
+if (config.NODE_ENV !== "production") {
+  app.use((req, res, next) => {
+    try {
+      const origin = req.headers.origin || "*";
+      // Echo origin when available so credentials can be supported in dev.
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS"
+      );
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, X-Requested-With, Accept, Access-Control-Request-Method, Access-Control-Request-Headers, Access-Control-Request-Private-Network"
+      );
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+
+      if (req.method === "OPTIONS") {
+        // Quick response for preflight
+        return res.sendStatus(204);
+      }
+    } catch (e) {
+      // ignore
+    }
+    next();
+  });
+}
 
 // CORS: in development allow dynamic origins (so ngrok/public URLs can reach local API).
 const corsOptions =
@@ -137,19 +191,65 @@ app.use("/api/admin", accountListingRoutes);
 app.use("/api/admin", apiProviderRoutes);
 app.use("/api", linkShortenerRoutes);
 app.use("/api/missions", missionRoutes);
+app.use("/api/exchange", exchangeRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/purchases", purchaseRoutes);
 app.use("/api/admin/order-disputes", orderDisputeRoutes);
 
 // Error handler middleware (should be last)
 app.use(errorHandler);
 
-// Start server
+// Start server with Socket.IO
 const startServer = async () => {
   // Connect to MongoDB
   await connectDB();
 
+  // Create HTTP server and attach socket.io
+  const server = http.createServer(app);
+
+  const io = new IOServer(server, {
+    cors: {
+      origin: config.CLIENT_URL || true,
+      credentials: true,
+    },
+  });
+
+  io.on("connection", (socket) => {
+    console.log("⚡ Socket connected:", socket.id);
+
+    socket.on("join", ({ channel } = {}) => {
+      const ch = channel || "general";
+      socket.join(ch);
+      console.log(`Socket ${socket.id} joined ${ch}`);
+    });
+
+    socket.on("message", async (data) => {
+      try {
+        // data: { channel, user, text, meta }
+        if (!data || !data.channel || !data.text) return;
+        const doc = await ChatMessage.create({
+          channel: data.channel,
+          user: data.user || "guest",
+          text: data.text,
+          meta: data.meta || {},
+        });
+        // Broadcast to room
+        io.to(data.channel).emit("message", doc);
+      } catch (err) {
+        console.error("Error saving/broadcasting message", err);
+      }
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected", socket.id, reason);
+    });
+  });
+
+  // Mount chat REST routes (public)
+  app.use("/api/public/chat", chatRoutes);
+
   // Start listening
-  app.listen(config.PORT, () => {
+  server.listen(config.PORT, () => {
     console.log(`🚀 Server được khởi động ở PORT ${config.PORT}`);
     console.log(`📡 Đường dẫn API: http://localhost:${config.PORT}/api`);
   });

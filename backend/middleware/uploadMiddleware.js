@@ -69,6 +69,7 @@ const accountFileFilter = (req, file, cb) => {
 
 export const uploadAccountFile = multer({
   storage: fileStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  // Increased limit to 50MB to allow larger account list files.
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: accountFileFilter,
 }).single("file");

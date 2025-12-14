@@ -36,12 +36,12 @@ export default function Missions() {
     .filter(m => m.status === 'active')
     .sort((a, b) => (Number(b.reward) || 0) - (Number(a.reward) || 0))
     .slice(0, 3)
-    .map((m, idx) => ({ ...m, rank: idx + 1, title: m.name || m.title || `NV ${m._id}` }));
+    .map((m, idx) => ({ ...m, rank: idx + 1, title: m.name || m.title || `NV ${(m as any)._id}` }));
 
   // All missions (fetched)
   const allMissions = missions.map(m => ({
-    id: m._id,
-    title: m.name || m.title || `NV ${m._id}`,
+    id: (m as any)._id,
+    title: m.name || m.title || `NV ${(m as any)._id}`,
     description: m.description,
     reward: m.reward,
     status: m.status,
@@ -139,7 +139,7 @@ export default function Missions() {
   };
 
   const handleStart = async (mission: any) => {
-    const id = mission.id || mission._id;
+    const id = mission.id || (mission as any)._id;
     if (starting[id]) return;
     setStarting(prev => ({ ...prev, [id]: true }));
     setAntiBotMissionId(id);
@@ -242,8 +242,8 @@ export default function Missions() {
       <p className="text-xs text-neutral-400 mb-4">{mission.description || 'Sau khi nhập token, nhiệm vụ sẽ mở lại lúc 00:00 (giờ VN).'}</p>
 
       <div className="flex items-center gap-2 mb-4">
-        <Button size="sm" className="flex-1 bg-blue-500 hover:bg-blue-600 text-black font-semibold" disabled={completedIds[mission.id || mission._id]} onClick={() => handleStart(mission)}>
-          {completedIds[mission.id || mission._id] ? 'Đã hoàn thành' : (starting[mission.id || mission._id] ? 'Đang bắt đầu...' : 'Bắt đầu')}
+        <Button size="sm" className="flex-1 bg-blue-500 hover:bg-blue-600 text-black font-semibold" disabled={completedIds[mission.id || (mission as any)._id]} onClick={() => handleStart(mission)}>
+          {completedIds[mission.id || (mission as any)._id] ? 'Đã hoàn thành' : (starting[mission.id || (mission as any)._id] ? 'Đang bắt đầu...' : 'Bắt đầu')}
         </Button>
         <Button size="sm" variant="outline" className="flex-1 border-neutral-600 text-neutral-400">
           <Shield size={16} />
@@ -251,7 +251,7 @@ export default function Missions() {
         </Button>
         {mission.requiresCode ? (
           <Button size="sm" variant="ghost" className="border-neutral-700 text-neutral-300" onClick={() => {
-            const id = mission.id || mission._id;
+            const id = mission.id || (mission as any)._id;
             setModalMissionId(id);
             setModalCode('');
             setModalMessage('');
@@ -337,7 +337,7 @@ export default function Missions() {
 
         <div className="space-y-3">
           {topMissions.map((mission) => (
-            <div key={mission.id || mission._id} className="relative">
+            <div key={mission.id || (mission as any)._id} className="relative">
               <div className="absolute -left-3 top-4 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold z-10"
                 style={{
                   background: mission.rank === 1 ? 'linear-gradient(135deg, #FFD700, #FFA500)' :

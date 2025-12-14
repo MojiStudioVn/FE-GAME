@@ -57,6 +57,87 @@ const accountListingSchema = new mongoose.Schema(
       default: "Vietnam",
       trim: true,
     },
+    // Additional parsed metadata from uploads
+    displayName: {
+      type: String,
+      trim: true,
+    },
+    heroesCount: {
+      type: Number,
+      default: 0,
+    },
+    skinsCount: {
+      type: Number,
+      default: 0,
+    },
+    qh: {
+      type: Number,
+      default: 0,
+    },
+    soCount: {
+      type: Number,
+      default: 0,
+    },
+    createdAtOriginal: {
+      type: String,
+    },
+    lsnap: {
+      type: String,
+    },
+    lastPasswordChange: {
+      type: String,
+    },
+    lastPhoneChange: {
+      type: String,
+    },
+    hasCmnd: {
+      type: Boolean,
+      default: false,
+    },
+    hasEmail: {
+      type: Boolean,
+      default: false,
+    },
+    emailStatus: {
+      type: String,
+      default: "",
+    },
+    hasAuthen: {
+      type: Boolean,
+      default: false,
+    },
+    hasPhone: {
+      type: Boolean,
+      default: false,
+    },
+    fbStatus: {
+      type: String,
+      default: "",
+    },
+    isBanned: {
+      type: Boolean,
+      default: false,
+    },
+    ssCount: {
+      type: Number,
+      default: 0,
+    },
+    sssCount: {
+      type: Number,
+      default: 0,
+    },
+    animeCount: {
+      type: Number,
+      default: 0,
+    },
+    sssAndAnime: {
+      type: String,
+      default: "",
+    },
+    accountState: {
+      type: String,
+      default: "",
+    },
 
     // Sale information
     saleType: {
@@ -121,6 +202,12 @@ const accountListingSchema = new mongoose.Schema(
       type: String,
       enum: ["active", "sold", "expired", "removed"],
       default: "active",
+    },
+    // Account upload type: random vs checked (accept both 'checked' and 'checked-account')
+    accountType: {
+      type: String,
+      enum: ["random", "checked-account", "checked"],
+      default: "random",
     },
     soldTo: {
       type: mongoose.Schema.Types.ObjectId,

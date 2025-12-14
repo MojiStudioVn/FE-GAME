@@ -13,6 +13,7 @@ import {
   Shield,
   FileText,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -317,24 +318,39 @@ export default function AdminDashboard() {
             <div className="h-28 bg-neutral-800 rounded-lg animate-pulse" />
           </>
         ) : statsConfig && statsConfig.length > 0 ? statsConfig.map((stat, index) => (
-          <Card key={index} className="border-neutral-700 card-border-glow">
-            <div className="flex items-start justify-between mb-4">
-              <div className={`p-3 ${stat.bgColor} rounded-lg`}>
-                <div className={stat.color}>
-                  {stat.icon}
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.08, type: 'spring', stiffness: 90 }}
+          >
+            <Card key={index} className="border-neutral-700 transform hover:scale-[1.01] transition-transform">
+              <div className="flex items-start justify-between mb-4">
+                <div className={`p-3 ${stat.bgColor} rounded-lg`}>
+                  <div className={stat.color}>
+                    {stat.icon}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-green-400">
+                  <ArrowUpRight size={14} />
+                  <span className="text-xs">{stat.change}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-green-400">
-                <ArrowUpRight size={14} />
-                <span className="text-xs">{stat.change}</span>
+              <div>
+                <p className="text-xs text-neutral-400 mb-1">{stat.label}</p>
+                <p className="text-3xl font-bold mb-1">
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.15 }}
+                  >
+                    {stat.value}
+                  </motion.span>
+                </p>
+                <p className="text-xs text-neutral-500">{stat.description}</p>
               </div>
-            </div>
-            <div>
-              <p className="text-xs text-neutral-400 mb-1">{stat.label}</p>
-              <p className="text-3xl font-bold mb-1">{stat.value}</p>
-              <p className="text-xs text-neutral-500">{stat.description}</p>
-            </div>
-          </Card>
+            </Card>
+          </motion.div>
         )) : (
           <div className="col-span-3 text-center py-8 text-neutral-500">
             Đang tải dữ liệu thống kê...
@@ -344,7 +360,7 @@ export default function AdminDashboard() {
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
         {/* Top Users */}
-        <Card className="card-border-glow">
+        <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
               <Trophy size={20} className="text-yellow-500" />
@@ -360,42 +376,49 @@ export default function AdminDashboard() {
                 <div className="h-12 bg-neutral-800 rounded-lg animate-pulse" />
                 <div className="h-12 bg-neutral-800 rounded-lg animate-pulse" />
               </div>
-            ) : topUsers.map((user) => {
+            ) : topUsers.map((user, idx) => {
               const badge = getRankBadge(user.rank);
               return (
-                <div key={user._id} className="flex items-center gap-3 p-3 bg-neutral-800 rounded-lg">
-                  <div className={`w-10 h-10 ${badge.bg} ${badge.text} rounded-lg flex items-center justify-center font-bold flex-shrink-0`}>
-                    {badge.label}
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-semibold">
-                      {user.username.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm font-medium truncate">{user.username}</p>
-                      {user.badge && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          user.badge === 'VIP' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
-                        }`}>
-                          {user.badge}
-                        </span>
-                      )}
+                <motion.div
+                  key={user._id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.06 }}
+                >
+                  <div className="flex items-center gap-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors">
+                    <div className={`w-10 h-10 ${badge.bg} ${badge.text} rounded-lg flex items-center justify-center font-bold flex-shrink-0`}>
+                      {badge.label}
                     </div>
-                    <p className="text-xs text-neutral-400">{user.missions} nhiệm vụ • {user.lastActive}</p>
+                    <div className="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-semibold">
+                        {user.username.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-medium truncate">{user.username}</p>
+                        {user.badge && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            user.badge === 'VIP' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {user.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-neutral-400">{user.missions} nhiệm vụ • {user.lastActive}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-yellow-400">{user.coins.toLocaleString()} xu</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-yellow-400">{user.coins.toLocaleString()} xu</p>
-                  </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
         </Card>
 
         {/* Recent Activity Logs */}
-        <Card className="card-border-glow">
+        <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
               <FileText size={20} className="text-cyan-400" />
@@ -447,7 +470,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Full Activity Logs */}
-      <Card className="card-border-glow">
+      <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
             <Activity size={20} className="text-blue-400" />

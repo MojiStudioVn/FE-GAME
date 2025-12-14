@@ -9,6 +9,7 @@ import {
   hardDeleteAccount,
   getRecentAccounts,
   uploadAccountsFile,
+  getUploadJobStatus,
 } from "../controllers/accountListingController.js";
 import {
   uploadAccountImages,
@@ -36,6 +37,9 @@ router.post(
   uploadAccountFile,
   uploadAccountsFile
 );
+
+// GET job status
+router.get("/upload-jobs/:id", verifyToken, isAdmin, getUploadJobStatus);
 
 // GET /api/admin/accounts (list all accounts with filters) - admin only
 router.get("/accounts", verifyToken, isAdmin, getAccountListings);

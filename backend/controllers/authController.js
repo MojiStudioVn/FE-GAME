@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import UserMission from "../models/UserMission.js";
 import Mission from "../models/Mission.js";
 import Log from "../models/Log.js";
+import { createUserLog } from "../utils/logService.js";
 import { config } from "../config/env.js";
 
 // Generate JWT Token
@@ -133,6 +134,37 @@ export const login = async (req, res, next) => {
     // Also store token in session for compatibility
     if (req.session) req.session.token = token;
 
+    // Record login log with client IP and device info
+    const resolveClientIp = (r) => {
+      const xf = r.headers["x-forwarded-for"] || r.headers["X-Forwarded-For"];
+      if (xf)
+        return (Array.isArray(xf) ? xf[0] : String(xf)).split(",")[0].trim();
+      return (
+        r.ip || r.connection?.remoteAddress || r.socket?.remoteAddress || null
+      );
+    };
+    const clientIp = resolveClientIp(req);
+    const userAgent = req.headers["user-agent"] || "";
+
+    try {
+      await createUserLog(req, {
+        message: `User logged in: ${user.username}`,
+        source: "backend",
+        page: "/login",
+        meta: {
+          type: "login",
+          ip: clientIp,
+          userAgent,
+          success: true,
+        },
+        userId: String(user._id),
+        userEmail: user.email,
+        userName: user.username,
+      });
+    } catch (logErr) {
+      console.warn("Failed to create login log:", logErr);
+    }
+
     // Return user data and a note that cookie is set. Frontend should prefer cookie-based auth
     res.status(200).json({
       success: true,
@@ -244,39 +276,91 @@ export const getMyDashboard = async (req, res, next) => {
     const rank = higherCount + 1;
 
     // Recent activities for this user (from logs)
-    // Search common fields and also meta.* fields in case logs store user info there
-    let recentLogs = await Log.find({
-      $or: [
-        { userId: userId },
-        { userEmail: user.email },
-        { "meta.userId": userId },
-        { "meta.userEmail": user.email },
-      ],
-    })
-      .sort({ timestamp: -1 })
-      .limit(10)
-      .lean();
+    // Build search conditions only for defined values to avoid matching undefined
+    const searchConds = [];
+    try {
+      if (userId) searchConds.push({ userId: String(userId) });
+    } catch (e) {
+      // ignore cast issues
+    }
+    if (user.email) searchConds.push({ userEmail: user.email });
+    if (userId) searchConds.push({ "meta.userId": String(userId) });
+    if (user.email) searchConds.push({ "meta.userEmail": user.email });
 
-    // Exclude admin-actor logs from regular users' personal feed
-    if (userRole !== "admin") {
-      recentLogs = recentLogs.filter(
-        (l) =>
-          !(
-            l.meta &&
-            l.meta.actorRole === "admin" &&
-            String(l.userId) !== String(userId)
-          )
-      );
+    let recentLogs = [];
+    if (searchConds.length > 0) {
+      recentLogs = await Log.find({ $or: searchConds })
+        .sort({ timestamp: -1 })
+        .limit(10)
+        .lean();
+      recentLogs = recentLogs.filter((l) => {
+        const actorRole = l.meta && l.meta.actorRole;
+        const logUserId = l.userId || l.meta?.userId || null;
+        return !(actorRole === "admin" && String(logUserId) !== String(userId));
+      });
+
+      // Loại bỏ các log liên quan đến 'token refresh' khỏi danh sách hiển thị
+      recentLogs = recentLogs.filter((l) => {
+        const metaType = String(l.meta?.type || "").toLowerCase();
+        const msg = String(l.message || "").toLowerCase();
+        // Nếu meta.type là token_refresh hoặc message có từ 'refresh'/'refreshed' thì bỏ
+        if (metaType === "token_refresh") return false;
+        if (/refresh|refreshed/.test(msg)) return false;
+        return true;
+      });
     }
 
     const formattedLogs = recentLogs.map((log) => {
       const coinsMeta = log.meta?.coins || 0;
-
       // Default action text
       let actionText = log.message || "";
 
-      // Special handling for card-related logs to show user-friendly card info
+      // metaType (normalized) - declare early so enrichers can use it
       const metaType = String(log.meta?.type || "").toLowerCase();
+
+      // Map token refresh / logout even when `meta.type` wasn't set
+      if (
+        metaType === "token_refresh" ||
+        /refreshed/i.test(log.message || "")
+      ) {
+        actionText = "Làm mới token";
+      }
+
+      if (
+        metaType === "logout" ||
+        /logged out|logout|sign out/i.test(log.message || "")
+      ) {
+        actionText = "Đăng xuất";
+      }
+
+      // Enrich messages for known meta types
+      if (metaType === "mission_complete") {
+        const mName =
+          log.meta?.missionName || log.meta?.missionId || "(nhiệm vụ)";
+        const amount = Number(log.meta?.amount || 0);
+        const oldCoins = Number(log.meta?.oldCoins ?? 0);
+        const newCoins = Number(log.meta?.newCoins ?? 0);
+        const sign = amount > 0 ? "+" : "";
+        actionText = `Hoàn thành nhiệm vụ ${mName} — ${sign}${amount} xu (${oldCoins} → ${newCoins})`;
+      }
+
+      if (metaType === "login") {
+        const ip = log.meta?.ip || "-";
+        const ua = log.meta?.userAgent || "";
+        actionText = `Đăng nhập từ IP ${ip}${ua ? " - " + ua : ""}`;
+      }
+
+      // Special handling for card-related logs to show user-friendly card info
+      // card recharge formatting
+      if (metaType === "card_recharge" || /card_recharge/.test(metaType)) {
+        const coinAmt = Number(log.meta?.amount || 0);
+        const oldCoins = Number(log.meta?.oldCoins ?? 0);
+        const newCoins = Number(log.meta?.newCoins ?? 0);
+        if (coinAmt) {
+          const sign = coinAmt > 0 ? "+" : "";
+          actionText = `Nạp thẻ: ${sign}${coinAmt} xu (${oldCoins} → ${newCoins})`;
+        }
+      }
       if (
         metaType.includes("card") ||
         /gửi thẻ|nạp thẻ|mua thẻ/i.test(log.message || "")
@@ -327,6 +411,7 @@ export const getMyDashboard = async (req, res, next) => {
         })(),
         status:
           log.level === "error" ? "failed" : log.meta?.status || "success",
+        meta: log.meta || {},
       };
     });
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Coins, Ticket, Shield, Search } from 'lucide-react';
@@ -8,6 +8,45 @@ type TabType = 'token' | 'xu' | 'acc' | 'acc-vip' | 'hoat-dong';
 export default function History() {
   const [activeTab, setActiveTab] = useState<TabType>('token');
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<Array<any>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [purchaseModal, setPurchaseModal] = useState<any | null>(null);
+  const purchase = purchaseModal?.purchase ?? purchaseModal;
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/auth/me/dashboard', {
+          method: 'GET',
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        const j = await res.json();
+        if (!mounted) return;
+        if (res.ok && j.success) {
+          const items = j.data?.recentActivities || [];
+          setLogs(items);
+        } else {
+          setError(j?.message || 'Không thể tải lịch sử');
+        }
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || 'Lỗi khi tải lịch sử');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Stats data
   const stats = [
@@ -102,6 +141,33 @@ export default function History() {
           />
         </div>
       </div>
+              {purchaseModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                  <div className="bg-neutral-950 p-6 rounded max-w-lg w-full">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Chi tiết ACC đã mua</h3>
+                      <button onClick={() => setPurchaseModal(null)} className="text-neutral-400">Đóng</button>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="text-xs text-neutral-400">Username</div>
+                      <div className="font-medium">{purchase?.accountSnapshot?.username || '-'}</div>
+
+                      <div className="mt-3 text-xs text-neutral-400">Password</div>
+                      <div className="font-medium">{purchase?.accountSnapshot?.password || '-'}</div>
+
+                      <div className="mt-3 text-xs text-neutral-400">Skins</div>
+                      <div className="text-sm text-neutral-300">{Array.isArray(purchase?.accountSnapshot?.skins) ? (purchase?.accountSnapshot?.skins || []).join(', ') : String(purchase?.accountSnapshot?.skins ?? '-')}</div>
+
+                      <div className="mt-3 text-xs text-neutral-400">SS</div>
+                      <div className="text-sm text-neutral-300">{Array.isArray(purchase?.accountSnapshot?.ssCards) ? (purchase?.accountSnapshot?.ssCards || []).join(', ') : (purchase?.accountSnapshot?.ssCards ? String(purchase?.accountSnapshot?.ssCards) : '-')}</div>
+
+                      <div className="mt-3 text-xs text-neutral-400">Level · Rank</div>
+                      <div className="text-sm text-neutral-300">{purchase?.accountSnapshot?.level ?? '-'} · {purchase?.accountSnapshot?.rank ?? '-'}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
       {/* Tabs */}
       <div className="mb-6">
@@ -132,22 +198,99 @@ export default function History() {
                 <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">Thời gian</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">Nhiệm vụ</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">Token</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">IP</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">Người / Số tiền</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-neutral-300">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={5} className="py-12 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-full bg-neutral-800/50 flex items-center justify-center">
-                      <Ticket size={32} className="text-neutral-600" />
+              {loading && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center">Đang tải...</td>
+                </tr>
+              )}
+
+              {!loading && error && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-rose-400">{error}</td>
+                </tr>
+              )}
+
+              {!loading && !error && logs.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-neutral-800/50 flex items-center justify-center">
+                        <Ticket size={32} className="text-neutral-600" />
+                      </div>
+                      <p className="text-neutral-400">{emptyMessage}</p>
+                      <p className="text-xs text-neutral-600">{emptySubMessage}</p>
                     </div>
-                    <p className="text-neutral-400">{emptyMessage}</p>
-                    <p className="text-xs text-neutral-600">{emptySubMessage}</p>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                </tr>
+              )}
+
+              {!loading && !error && logs.length > 0 && (
+                logs
+                  .filter((l) => {
+                    // Tab filtering
+                    if (activeTab === 'hoat-dong') return true;
+                    if (activeTab === 'xu') return Boolean(l.amount && String(l.amount).trim() !== '');
+                    if (activeTab === 'token') return String(l.type || '').includes('token') || String(l.action || '').toLowerCase().includes('token');
+                    if (activeTab === 'acc') return String(l.action || '').toLowerCase().includes('acc') || String(l.action || '').toLowerCase().includes('mua') || String(l.action || '').toLowerCase().includes('đổi');
+                    if (activeTab === 'acc-vip') return String(l.action || '').toLowerCase().includes('skin') || String(l.action || '').toLowerCase().includes('vip');
+                    return true;
+                  })
+                  .filter((l) => {
+                    if (!searchQuery) return true;
+                    const q = searchQuery.toLowerCase();
+                    return (
+                      String(l.action || '').toLowerCase().includes(q) ||
+                      String(l.user || '').toLowerCase().includes(q) ||
+                      String(l.time || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map((l) => (
+                    <tr key={l.id} className="border-b border-neutral-800">
+                      <td className="py-3 px-4 text-sm text-neutral-400">{l.time}</td>
+                      <td className="py-3 px-4 text-sm">{l.action}</td>
+                      <td className="py-3 px-4 text-sm text-neutral-300">{l.amount || '-'}</td>
+                      <td className="py-3 px-4 text-sm text-neutral-300">{l.user || '-'}</td>
+                      <td className="py-3 px-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          {l.meta?.purchaseId && (
+                            <button
+                              className="text-xs bg-blue-600 px-2 py-1 rounded text-black"
+                              onClick={async () => {
+                                try {
+                                  setLoading(true);
+                                  const token = localStorage.getItem('token');
+                                  const res = await fetch(`/api/purchases/${l.meta.purchaseId}`, {
+                                    method: 'GET',
+                                    credentials: 'include',
+                                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                                  });
+                                  const j = await res.json();
+                                  if (res.ok && j.success) {
+                                    setPurchaseModal(j.purchase);
+                                  } else {
+                                    setError(j?.message || 'Không thể tải chi tiết');
+                                  }
+                                } catch (err: any) {
+                                  setError(err?.message || 'Lỗi khi tải');
+                                } finally {
+                                  setLoading(false);
+                                }
+                              }}
+                            >
+                              Xem ACC
+                            </button>
+                          )}
+                          <button className="text-xs text-neutral-400 hover:text-white" onClick={() => navigator.clipboard?.writeText(JSON.stringify(l))}>Sao chép</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+              )}
             </tbody>
           </table>
         </div>
@@ -155,3 +298,8 @@ export default function History() {
     </div>
   );
 }
+
+// Fetch logs on mount and when activeTab/search change
+// Place effect after component to avoid hoisting issues
+
+

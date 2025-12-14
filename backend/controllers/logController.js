@@ -1,15 +1,51 @@
 import Log from "../models/Log.js";
+import jwt from "jsonwebtoken";
+import { extractToken } from "../middleware/auth.js";
+import { config } from "../config/env.js";
 
 // @desc    Create log
 // @route   POST /api/logs
-// @access  Public
+// @access  Public (will attach user info when token provided)
 export const createLog = async (req, res) => {
   try {
-    const { level, message, source, page, stack, meta } = req.body;
+    const { level, message, source, page, stack } = req.body;
+    let { meta } = req.body;
 
-    // Lấy thông tin user nếu có
-    const userId = req.user?.id;
-    const userEmail = req.user?.email;
+    // Resolve client IP (honor X-Forwarded-For)
+    const resolveClientIp = (r) => {
+      const xf = r.headers["x-forwarded-for"] || r.headers["X-Forwarded-For"];
+      if (xf) {
+        const s = Array.isArray(xf) ? xf[0] : String(xf);
+        return s.split(",")[0].trim();
+      }
+      return (
+        r.ip || r.connection?.remoteAddress || r.socket?.remoteAddress || null
+      );
+    };
+    const clientIp = resolveClientIp(req);
+    const userAgent = req.headers["user-agent"] || "";
+
+    // Try to extract token and decode user info if present
+    let userId = null;
+    let userEmail = null;
+    try {
+      const { token } = extractToken(req);
+      if (token) {
+        const decoded = jwt.verify(token, config.JWT_SECRET);
+        if (decoded) {
+          userId = decoded.id || decoded._id || null;
+          userEmail = decoded.email || null;
+        }
+      }
+    } catch (e) {
+      // ignore token decode failures - do not reject the log create
+    }
+
+    // Ensure meta is an object
+    if (!meta || typeof meta !== "object") meta = {};
+    // Merge IP and device info into meta unless already provided
+    if (!meta.ip) meta.ip = clientIp;
+    if (!meta.deviceInfo) meta.deviceInfo = userAgent;
 
     const log = await Log.create({
       level: level || "info",

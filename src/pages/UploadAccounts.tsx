@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -12,6 +12,9 @@ export default function UploadAccounts() {
   const [fileName, setFileName] = useState('');
   const [previewLines, setPreviewLines] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [defaultPrice, setDefaultPrice] = useState<number | ''>('');
   const fileRef = useRef<HTMLInputElement | null>(null);
   const { showToast } = useToast();
 
@@ -52,37 +55,182 @@ export default function UploadAccounts() {
     const form = new FormData();
     form.append('file', input);
     form.append('type', tab === 'random' ? 'random' : 'checked-account');
+    if (defaultPrice !== '') form.append('price', String(defaultPrice));
 
+    // Use XMLHttpRequest to track upload progress
     setIsUploading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/admin/upload-accounts', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Authorization: token ? `Bearer ${token}` : '',
-        },
-        body: form,
-      });
-      const j = await res.json();
-      if (res.ok && j.success !== false) {
-        showToast({ type: 'success', title: 'Tải lên thành công' });
-        setPreviewLines([]);
-        setFileName('');
-        if (fileRef.current) fileRef.current.value = '';
-      } else {
-        showToast({ type: 'error', title: j?.message || 'Lỗi khi tải lên' });
-      }
-    } catch (err) {
-      showToast({ type: 'error', title: 'Lỗi mạng khi tải lên' });
-    } finally {
-      setIsUploading(false);
-    }
+    setUploadProgress(0);
+    setUploadMessage('Đang chuẩn bị tải lên...');
+    const token = localStorage.getItem('token');
+
+    await new Promise<void>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/admin/upload-accounts');
+      xhr.withCredentials = true;
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(percent);
+          setUploadMessage(`Đang tải tài khoản... ${percent}%`);
+        } else {
+          setUploadMessage('Đang tải tài khoản...');
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          const j = JSON.parse(xhr.responseText || '{}');
+
+          // If server returned a jobId (background processing), poll for status
+          const jobId = j.jobId || j.job?._id;
+          if (jobId) {
+            setUploadProgress(100);
+            setUploadMessage('Đã upload. Đang xử lý trên server...');
+
+            const pollInterval = 1000;
+            let stopped = false;
+            const tokenHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+            const poll = async () => {
+              try {
+                const res = await fetch(`/api/admin/upload-jobs/${jobId}`, {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers: tokenHeader,
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                  // stop polling on error
+                  if (!stopped) {
+                    stopped = true;
+                    setIsUploading(false);
+                    showToast({ type: 'error', title: data?.message || 'Lỗi khi lấy trạng thái xử lý' });
+                    resolve();
+                  }
+                  return;
+                }
+
+                const job = data.job;
+                setUploadProgress(job.progress || 0);
+                setUploadMessage(job.message || job.status || 'Đang xử lý');
+
+                if (job.status === 'done') {
+                  if (!stopped) {
+                    stopped = true;
+                    showToast({ type: 'success', title: 'Tải lên và xử lý hoàn tất' });
+                    setPreviewLines([]);
+                    setFileName('');
+                    if (fileRef.current) fileRef.current.value = '';
+                    setTimeout(() => {
+                      setIsUploading(false);
+                      setUploadProgress(0);
+                      setUploadMessage('');
+                    }, 800);
+                    resolve();
+                  }
+                } else if (job.status === 'failed') {
+                  if (!stopped) {
+                    stopped = true;
+                    setIsUploading(false);
+                    setUploadMessage(job.message || 'Xử lý thất bại');
+                    showToast({ type: 'error', title: 'Xử lý file thất bại' });
+                    resolve();
+                  }
+                } else {
+                  // continue polling
+                  setTimeout(poll, pollInterval);
+                }
+              } catch (err) {
+                if (!stopped) {
+                  stopped = true;
+                  setIsUploading(false);
+                  showToast({ type: 'error', title: 'Lỗi khi poll trạng thái upload' });
+                  resolve();
+                }
+              }
+            };
+
+            // start polling
+            poll();
+            return; // don't resolve here, wait until poll resolves
+          }
+
+          // Fallback: if server returned immediate result (created/errors), handle normally
+          if (xhr.status >= 200 && xhr.status < 300 && j.success !== false) {
+            showToast({ type: 'success', title: 'Tải lên thành công' });
+            setPreviewLines([]);
+            setFileName('');
+            if (fileRef.current) fileRef.current.value = '';
+          } else {
+            showToast({ type: 'error', title: j?.message || 'Lỗi khi tải lên' });
+          }
+        } catch (err) {
+          showToast({ type: 'error', title: 'Lỗi khi xử lý phản hồi từ server' });
+        }
+        setUploadProgress(100);
+        setUploadMessage('Hoàn tất');
+        setTimeout(() => {
+          setIsUploading(false);
+          setUploadProgress(0);
+          setUploadMessage('');
+        }, 800);
+        resolve();
+      };
+
+      xhr.onerror = () => {
+        showToast({ type: 'error', title: 'Lỗi mạng khi tải lên' });
+        setIsUploading(false);
+        setUploadMessage('Lỗi khi tải lên');
+        resolve();
+      };
+
+      // append form data and send
+      xhr.send(form);
+    });
   };
+
+  // warn users before closing the tab when uploading
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isUploading) {
+        e.preventDefault();
+        e.returnValue = 'Tệp đang được tải lên. Bạn có chắc chắn muốn rời đi?';
+        return e.returnValue;
+      }
+      return undefined;
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isUploading]);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <PageHeader title="Tải lên tài khoản" description="Tải lên file danh sách tài khoản (txt hoặc docx)." />
+
+      {/* Upload progress modal */}
+      {isUploading && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-neutral-950 p-6 rounded max-w-xl w-full mx-4">
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-semibold">Đang tải tài khoản</h3>
+            </div>
+            <p className="text-sm text-neutral-400 mt-2">{uploadMessage || 'Đang tải tài khoản, vui lòng chờ. Không đóng trang.'}</p>
+
+            <div className="mt-4">
+              <div className="w-full bg-neutral-800 rounded-full h-4 overflow-hidden">
+                <div className="bg-blue-600 h-4 transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+              <div className="text-xs text-neutral-400 mt-2">{uploadProgress}%</div>
+            </div>
+
+            <div className="mt-4 text-right">
+              <button disabled className="px-3 py-1 rounded bg-neutral-800 text-neutral-500">Vui lòng chờ...</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6">
         <Card>
@@ -105,6 +253,16 @@ export default function UploadAccounts() {
             <TabsContent value="random">
               <div className="space-y-4">
                 <p className="text-sm text-neutral-400">Định dạng: mỗi dòng là một tài khoản. Hệ thống sẽ gán <code>type = random</code> tự động.</p>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-neutral-400">Giá mặc định (xu):</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={defaultPrice}
+                    onChange={(e) => setDefaultPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded w-40"
+                  />
+                </div>
                 <div>
                   <input ref={fileRef} onChange={handleFileChange} accept=".txt,.docx" type="file" />
                 </div>
@@ -139,6 +297,16 @@ export default function UploadAccounts() {
             <TabsContent value="checked">
               <div className="space-y-4">
                 <p className="text-sm text-neutral-400">Định dạng: mỗi dòng là một tài khoản đã kiểm tra. Hệ thống sẽ gán <code>type = checked-account</code> tự động.</p>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-neutral-400">Giá mặc định (xu):</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={defaultPrice}
+                    onChange={(e) => setDefaultPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded w-40"
+                  />
+                </div>
                 <div>
                   <input ref={fileRef} onChange={handleFileChange} accept=".txt,.docx" type="file" />
                 </div>

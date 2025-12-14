@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -9,86 +9,69 @@ export default function FindAccountBySkin() {
   const [selectedGame, setSelectedGame] = useState('');
   const [priceRange, setPriceRange] = useState('all');
 
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   const games = ['Liên Quân Mobile', 'Free Fire', 'PUBG Mobile', 'Mobile Legends', 'Genshin Impact'];
 
-  const accounts = [
-    {
-      id: 1,
-      game: 'Liên Quân Mobile',
-      skins: ['Nakroth Rồng Băng', 'Violet Thiên Hà', 'Superman Siêu Anh Hùng'],
-      rank: 'Cao Thủ',
-      heroes: 52,
-      totalSkins: 28,
-      price: 800,
-      rating: 4.8
-    },
-    {
-      id: 2,
-      game: 'Liên Quân Mobile',
-      skins: ['Quillen Tử Thần', 'Murad Hắc Ảnh', 'Raz Siêu Sao'],
-      rank: 'Kim Cương',
-      heroes: 48,
-      totalSkins: 25,
-      price: 650,
-      rating: 4.5
-    },
-    {
-      id: 3,
-      game: 'Free Fire',
-      skins: ['AK47 Dragon', 'M1014 Galaxy', 'AWM Scorpion'],
-      rank: 'Heroic',
-      level: 68,
-      totalSkins: 35,
-      price: 500,
-      rating: 4.7
-    },
-    {
-      id: 4,
-      game: 'PUBG Mobile',
-      skins: ['M416 Glacier', 'AKM Golden', 'Set Pharaoh'],
-      rank: 'Conqueror',
-      level: 75,
-      totalSkins: 42,
-      price: 1200,
-      rating: 4.9
-    },
-    {
-      id: 5,
-      game: 'Mobile Legends',
-      skins: ['Fanny Lightborn', 'Gusion Cosmic Gleam', 'Kagura Cherry Witch'],
-      rank: 'Mythic',
-      heroes: 65,
-      totalSkins: 38,
-      price: 900,
-      rating: 4.6
-    },
-    {
-      id: 6,
-      game: 'Genshin Impact',
-      skins: ['Raiden Shogun', 'Zhongli', 'Kazuha'],
-      level: 58,
-      characters: 25,
-      totalSkins: 15,
-      price: 1500,
-      rating: 5.0
-    },
-  ];
+  // debounce input
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPage(1); // reset page on new search
+      fetchAccounts(1);
+    }, 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, selectedGame, priceRange]);
 
-  const filteredAccounts = accounts.filter(account => {
-    const matchesSearch = searchQuery === '' ||
-      account.skins.some(skin => skin.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      account.game.toLowerCase().includes(searchQuery.toLowerCase());
+  const buildPriceParams = () => {
+    if (priceRange === 'low') return { maxPrice: 499 };
+    if (priceRange === 'mid') return { minPrice: 500, maxPrice: 999 };
+    if (priceRange === 'high') return { minPrice: 1000 };
+    return {};
+  };
 
-    const matchesGame = selectedGame === '' || account.game === selectedGame;
+  const fetchAccounts = async (p = page) => {
+    if (!searchQuery) {
+      setAccounts([]);
+      setTotalCount(0);
+      setTotalPages(1);
+      return;
+    }
 
-    const matchesPrice =
-      priceRange === 'all' ||
-      (priceRange === 'low' && account.price < 500) ||
-      (priceRange === 'mid' && account.price >= 500 && account.price < 1000) ||
-      (priceRange === 'high' && account.price >= 1000);
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('skin', searchQuery);
+      if (selectedGame) params.set('game', selectedGame);
+      const priceParams = buildPriceParams();
+      if (priceParams.minPrice) params.set('minPrice', String(priceParams.minPrice));
+      if (priceParams.maxPrice) params.set('maxPrice', String(priceParams.maxPrice));
+      params.set('page', String(p));
+      params.set('limit', '20');
 
-    return matchesSearch && matchesGame && matchesPrice;
-  });
+      const res = await fetch(`/api/public/find-account?${params.toString()}`);
+      const j = await res.json();
+      if (res.ok && j.success) {
+        setAccounts(j.accounts || []);
+        setTotalCount(j.pagination?.total || 0);
+        setTotalPages(j.pagination?.pages || 1);
+      } else {
+        setAccounts([]);
+        setTotalCount(0);
+        setTotalPages(1);
+      }
+    } catch (err) {
+      setAccounts([]);
+      setTotalCount(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
@@ -198,37 +181,44 @@ export default function FindAccountBySkin() {
           </div>
 
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-neutral-400">
-              Tìm thấy {filteredAccounts.length} tài khoản
-            </p>
+            <p className="text-sm text-neutral-400">Tìm thấy {totalCount} tài khoản</p>
+            <div className="text-xs text-neutral-500">Trang {page} / {totalPages}</div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            {filteredAccounts.map((account) => (
-              <Card key={account.id} className="hover:border-neutral-600">
+            {loading && (
+              <div className="col-span-2 py-8 text-center text-neutral-400">Đang tìm kiếm...</div>
+            )}
+
+            {!loading && !searchQuery && (
+              <div className="col-span-2 py-8 text-center text-neutral-400">Nhập tên skin để bắt đầu tìm kiếm</div>
+            )}
+
+            {!loading && searchQuery && accounts.length === 0 && (
+              <div className="col-span-2 py-8 text-center text-neutral-400">Không tìm thấy tài khoản phù hợp</div>
+            )}
+
+            {!loading && accounts.map((account: any) => (
+              <Card key={account._id || account.username} className="hover:border-neutral-600">
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <p className="text-sm mb-1">{account.game}</p>
+                    <p className="text-sm mb-1">{account.game || account.saleType || 'Game'}</p>
                     <div className="flex items-center gap-1">
                       <Star size={12} className="text-yellow-500 fill-yellow-500" />
-                      <span className="text-xs text-neutral-400">{account.rating}</span>
+                      <span className="text-xs text-neutral-400">{account.rating ?? '-'}</span>
                     </div>
                   </div>
-                  <span className="text-lg">{account.price} xu</span>
+                  <span className="text-lg">{account.price ?? '-'} xu</span>
                 </div>
 
                 <div className="mb-3">
                   <p className="text-xs text-neutral-400 mb-2">Skin nổi bật:</p>
                   <div className="flex flex-wrap gap-1">
-                    {account.skins.slice(0, 2).map((skin, idx) => (
-                      <span key={idx} className="text-xs bg-neutral-800 px-2 py-1 rounded">
-                        {skin}
-                      </span>
+                    {(account.skins || account.skins === 0 ? account.skins : []).slice(0, 2).map((skin: string, idx: number) => (
+                      <span key={idx} className="text-xs bg-neutral-800 px-2 py-1 rounded">{skin}</span>
                     ))}
-                    {account.skins.length > 2 && (
-                      <span className="text-xs bg-neutral-800 px-2 py-1 rounded">
-                        +{account.skins.length - 2} khác
-                      </span>
+                    {(account.skins || []).length > 2 && (
+                      <span className="text-xs bg-neutral-800 px-2 py-1 rounded">+{(account.skins || []).length - 2} khác</span>
                     )}
                   </div>
                 </div>
@@ -236,18 +226,18 @@ export default function FindAccountBySkin() {
                 <div className="grid grid-cols-3 gap-2 mb-3 text-xs text-neutral-400">
                   <div>
                     <p className="text-neutral-500">Rank</p>
-                    <p className="text-white">{account.rank}</p>
+                    <p className="text-white">{account.rank ?? '-'}</p>
                   </div>
-                  {account.heroes && (
+                  {account.heroes !== undefined && (
                     <div>
                       <p className="text-neutral-500">Tướng</p>
-                      <p className="text-white">{account.heroes}</p>
+                      <p className="text-white">{account.heroes ?? account.heroesCount ?? '-'}</p>
                     </div>
                   )}
-                  {account.level && (
+                  {account.level !== undefined && (
                     <div>
                       <p className="text-neutral-500">Level</p>
-                      <p className="text-white">{account.level}</p>
+                      <p className="text-white">{account.level ?? '-'}</p>
                     </div>
                   )}
                   {account.characters && (
@@ -258,7 +248,7 @@ export default function FindAccountBySkin() {
                   )}
                   <div>
                     <p className="text-neutral-500">Tổng skin</p>
-                    <p className="text-white">{account.totalSkins}</p>
+                    <p className="text-white">{account.totalSkins ?? account.skins?.length ?? account.skinsCount ?? '-'}</p>
                   </div>
                 </div>
 

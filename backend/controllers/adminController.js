@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Log from "../models/Log.js";
+import { createUserLog } from "../utils/logService.js";
 import UserMission from "../models/UserMission.js";
 import PaymentConfig from "../models/PaymentConfig.js";
 
@@ -414,13 +415,11 @@ export const updatePaymentConfig = async (req, res) => {
     }
 
     // Create log
-    await Log.create({
+    await createUserLog(req, {
       action: "update_payment_config",
       source: "backend",
       message: "Cập nhật cấu hình thanh toán",
-      userId: req.user.id,
-      userName: req.user.username,
-      userEmail: req.user.email,
+      page: "/admin/settings/payment",
       meta: {
         type: "payment_config",
         cfgType,

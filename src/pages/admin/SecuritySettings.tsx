@@ -107,7 +107,7 @@ export default function SecuritySettings() {
     }
   };
 
-  const formatBytes = (bytes) => {
+  const formatBytes = (bytes: number) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
     const sizes = ["Bytes", "KB", "MB", "GB"];
@@ -115,7 +115,7 @@ export default function SecuritySettings() {
     return Math.round(bytes / Math.pow(k, i)) + " " + sizes[i];
   };
 
-  const formatTime = (ms) => {
+  const formatTime = (ms: number) => {
     const seconds = ms / 1000;
     const minutes = seconds / 60;
     const hours = minutes / 60;

@@ -1,14 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Shield, Sparkles, ShoppingBag, Zap, Activity, Circle, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useToast } from '../components/Toast';
 
 export default function ExchangeAccount() {
   const [selectedPackage, setSelectedPackage] = useState<'ss' | 'sss' | null>(null);
 
-  // Package data
-  const packages = [
+  // API base (local backend)
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  // If you previously used an iframe for remote debugging, it's removed when fetching local API.
+
+  // Package data (fallback static)
+  const staticPackages = [
     {
       id: 'ss',
       name: 'ACC SS',
@@ -102,12 +109,157 @@ export default function ExchangeAccount() {
     }
   ];
 
+  // Fetched data state
+  const [fetchedPackages, setFetchedPackages] = useState<any[] | null>(null);
+  const [userCoins, setUserCoins] = useState<number | null>(null);
+  const [loadingData, setLoadingData] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [buying, setBuying] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+  const [boughtAccount, setBoughtAccount] = useState<any | null>(null);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const packageCandidates = ['/exchange/packages', '/packages', '/shop/packages', '/exchange'];
+    // Prefer the auth-prefixed endpoints first (backend exposes /api/auth/me)
+    const userCandidates = ['/auth/me', '/me', '/profile'];
+
+    const tryFetchPackages = async () => {
+      for (const path of packageCandidates) {
+        try {
+          const res = await fetch(`${API_URL}${path}`, { headers });
+          if (!res.ok) continue;
+          const j = await res.json();
+          // Accept either an array or { packages: [...] }
+          if (Array.isArray(j)) return j;
+          if (Array.isArray(j.packages)) return j.packages;
+          if (Array.isArray(j.data)) return j.data;
+        } catch (e) {
+          // try next
+        }
+      }
+      return null;
+    };
+
+    const tryFetchUser = async () => {
+      for (const path of userCandidates) {
+        try {
+          const res = await fetch(`${API_URL}${path}`, { headers });
+          if (!res.ok) continue;
+          const j = await res.json();
+          // common shapes: { coins: number } or { data: { coins } } or { user: { coins } }
+          if (typeof j.coins === 'number') return j.coins;
+          if (j.data && typeof j.data.coins === 'number') return j.data.coins;
+          if (j.user && typeof j.user.coins === 'number') return j.user.coins;
+          if (j.balance && typeof j.balance.coins === 'number') return j.balance.coins;
+        } catch (e) {
+          // try next
+        }
+      }
+      return null;
+    };
+
+    const normalizePkg = (p: any) => {
+      // try multiple possible property names
+      const id = p.id || p._id || p.key || p.name?.toLowerCase?.() || 'unknown';
+      const name = p.name || p.title || p.label || id;
+      const price = Number(p.price ?? p.cost ?? p.amount ?? p.reward ?? 0);
+      const limit = Number(p.limit ?? p.stock ?? p.quantity ?? p.kho ?? null) || null;
+      const description = p.description || p.desc || p.note || '';
+      const tradeDelay = p.tradeDelay || p.delay || p.note || '';
+      const features = Array.isArray(p.features) ? p.features : (p.featuresText ? [p.featuresText] : []);
+      return { id, name, price, limit, description, tradeDelay, features, shopUrl: p.shopUrl, actionLabel: p.actionLabel, actionNote: p.actionNote };
+    };
+
+    (async () => {
+      setLoadingData(true);
+      setFetchError(null);
+      try {
+        const [pkgs, coins] = await Promise.all([tryFetchPackages(), tryFetchUser()]);
+        if (pkgs) {
+          const normalized = (pkgs as any[]).map(normalizePkg);
+          setFetchedPackages(normalized);
+        }
+        if (typeof coins === 'number') setUserCoins(coins);
+      } catch (err: any) {
+        setFetchError(err?.message || 'Failed to fetch data');
+      } finally {
+        setLoadingData(false);
+      }
+    })();
+  }, []);
+
+  const handleBuy = async (pkgId: string) => {
+    setBuyError(null);
+    setBoughtAccount(null);
+    const token = localStorage.getItem('token');
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      setBuying(true);
+      const res = await fetch(`${API_URL}/exchange/buy`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ packageId: pkgId }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        const msg = j?.message || 'Lỗi mua hàng';
+        setBuyError(msg);
+        showToast({ type: 'error', title: 'Lỗi mua hàng', message: msg, duration: 6000 });
+        return;
+      }
+
+      // success
+      setBoughtAccount(j.account || null);
+      if (typeof j.remainingCoins === 'number') setUserCoins(j.remainingCoins);
+      // show global toast success
+      showToast({ type: 'success', title: 'Đã mua hàng thành công', message: 'Vui lòng kiểm tra lịch sử giao dịch', duration: 8000 });
+
+      // decrement local package stock if we have fetchedPackages
+      if (fetchedPackages && Array.isArray(fetchedPackages)) {
+        setFetchedPackages((prev) => {
+          if (!prev) return prev;
+          return prev.map((p) => {
+            if (p.id === pkgId) {
+              const newLimit = (typeof p.limit === 'number' ? p.limit : 0) - 1;
+              return { ...p, limit: newLimit };
+            }
+            return p;
+          });
+        });
+      }
+    } catch (e: any) {
+      const msg = e?.message || 'Lỗi mạng';
+      setBuyError(msg);
+      showToast({ type: 'error', title: 'Lỗi mua hàng', message: msg, duration: 6000 });
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  const navigate = useNavigate();
+  const packagesToRender = fetchedPackages && fetchedPackages.length ? fetchedPackages : staticPackages;
+
   return (
     <div className="p-6 max-w-7xl mx-auto smooth-fade-in">
       <PageHeader
         title="Đổi ACC: VIP Pro"
         description="Hệ thống đổi ACC tự động, log đầy đủ để tránh tranh chấp. Sau khi trừ xu xong, tài khoản sẽ hiện thị ngay và bạn có thể bấm Check Acc để hệ thống kiểm tra giúp."
       />
+
+      {/* Debug: show fetched data shapes for verification */}
+      {(fetchedPackages || userCoins !== null) && (
+        <div className="mb-4 p-3 bg-neutral-900/40 rounded border border-neutral-800 text-xs text-neutral-300">
+          <div className="mb-2 font-semibold">Debug: fetched data</div>
+          <pre className="whitespace-pre-wrap max-h-40 overflow-auto">{JSON.stringify({ packages: fetchedPackages, userCoins }, null, 2)}</pre>
+        </div>
+      )}
 
       {/* Info badges */}
       <div className="flex flex-wrap gap-3 mb-6">
@@ -124,12 +276,25 @@ export default function ExchangeAccount() {
           <span className="text-sm text-neutral-300">Kho cập nhật mỗi ngày</span>
         </div>
       </div>
+        {/* Slide-in error modal (local) */}
+        {/* error modal replaced by global Toast */}
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        {packages.map((pkg) => {
-          const Icon = pkg.icon;
-          return (
-            <Card key={pkg.id} className="border-neutral-700 hover:border-neutral-600 transition-colors">
+        {loadingData ? (
+          <div className="col-span-2 text-center text-neutral-400">Đang tải dữ liệu...</div>
+        ) : fetchError ? (
+          <div className="col-span-2 text-center text-red-400">Lỗi tải dữ liệu: {fetchError}</div>
+        ) : (
+          packagesToRender.map((pkg: any) => {
+            // some package objects (from normalized fetched data) may not include
+            // an `icon` property or `features` array. Provide safe fallbacks so
+            // React never tries to render `undefined` as a component.
+            const Icon = pkg.icon || Shield;
+            const features = Array.isArray(pkg.features) ? pkg.features : [];
+            // numeric stock for display/logic (treat null/undefined as 0)
+            const stock = Number(pkg.limit ?? 0);
+            return (
+              <Card key={pkg.id} className="border-neutral-700 hover:border-neutral-600 transition-colors">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-lg bg-neutral-800 flex items-center justify-center">
@@ -138,6 +303,11 @@ export default function ExchangeAccount() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-lg font-bold">{pkg.name}</h3>
+                      {stock <= 0 && (
+                        <span title="Hết hàng" className="ml-2 inline-block px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">
+                          Hết hàng
+                        </span>
+                      )}
                       {pkg.id === 'sss' && (
                         <span className="px-2 py-0.5 bg-orange-500 text-black text-xs font-bold rounded">
                           {pkg.label}
@@ -152,18 +322,19 @@ export default function ExchangeAccount() {
                 <Sparkles size={20} className="text-neutral-600" />
               </div>
 
-              <div className="mb-4">
+                <div className="mb-4">
                 <div className="flex items-baseline gap-2 mb-2">
                   <span className="text-3xl font-bold">{pkg.price}</span>
                   <span className="text-neutral-400">xu</span>
                 </div>
-                {pkg.limit && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <ShoppingBag size={14} className="text-green-400" />
-                    <span className="text-neutral-400">Kho:</span>
-                    <span className="text-white font-semibold">{pkg.limit.toLocaleString()}</span>
-                  </div>
-                )}
+                {
+                  // Always show stock. If backend returns null/undefined, treat as 0 for display.
+                }
+                <div className="flex items-center gap-2 text-sm">
+                  <ShoppingBag size={14} className="text-green-400" />
+                  <span className="text-neutral-400">Kho:</span>
+                  <span className="text-white font-semibold">{Number(pkg.limit ?? 0).toLocaleString()}</span>
+                </div>
               </div>
 
               <p className="text-sm text-neutral-300 mb-4">{pkg.description}</p>
@@ -188,12 +359,12 @@ export default function ExchangeAccount() {
               <div className="mb-4">
                 <div className="text-xs text-neutral-400 mb-2">Số xu hiện tại</div>
                 <div className="flex items-center justify-between p-3 bg-neutral-900 rounded-lg border border-neutral-800">
-                  <span className="text-sm">0 xu / {pkg.price} xu</span>
+                  <span className="text-sm">{(userCoins ?? 0).toLocaleString()} xu / {pkg.price} xu</span>
                 </div>
               </div>
 
               <ul className="space-y-2 mb-4 text-sm">
-                {pkg.features.map((feature, index) => (
+                {features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <Circle size={6} className="mt-1.5 flex-shrink-0 fill-current text-neutral-500" />
                     <span className="text-neutral-400">{feature}</span>
@@ -203,9 +374,17 @@ export default function ExchangeAccount() {
 
               <Button
                 className={`w-full ${pkg.id === 'ss' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-purple-500 hover:bg-purple-600'} text-black font-semibold`}
-                onClick={() => setSelectedPackage(pkg.id as 'ss' | 'sss')}
+                onClick={() => {
+                  // If package provides an actionLabel + shopUrl (SSS), open internal shop page
+                  if (pkg.id === 'sss' && pkg.shopUrl) {
+                    navigate('/dashboard/shop-acc');
+                    return;
+                  }
+                  handleBuy(pkg.id);
+                }}
+                disabled={stock <= 0 || buying}
               >
-                {pkg.actionLabel || `Đổi ACC ${pkg.name} ngay`}
+                {stock <= 0 ? 'Hết hàng' : (buying ? 'Đang xử lý...' : (pkg.actionLabel || `Đổi ACC ${pkg.name} ngay`))}
               </Button>
 
               {pkg.actionNote && (
@@ -217,10 +396,31 @@ export default function ExchangeAccount() {
                   Không đủ xu – vào mục <span className="text-blue-400">Mua xu</span> để nạp thêm.
                 </p>
               )}
-            </Card>
-          );
-        })}
+              </Card>
+            );
+          })
+        )}
       </div>
+
+      {/* Purchase result (removed inline error box - errors show as slide-in modal) */}
+
+      {boughtAccount && (
+        <div className="mb-6 p-4 bg-green-900/30 border border-green-800 rounded">
+          <h4 className="font-semibold mb-2">Mua thành công — thông tin tài khoản</h4>
+          <div className="text-sm">
+            <div><strong>Username:</strong> {boughtAccount.username}</div>
+            <div><strong>Password:</strong> {boughtAccount.password}</div>
+            {Array.isArray(boughtAccount.ssCards) && boughtAccount.ssCards.length > 0 && (
+              <div><strong>SS Cards:</strong> {boughtAccount.ssCards.join(', ')}</div>
+            )}
+            {Array.isArray(boughtAccount.sssCards) && boughtAccount.sssCards.length > 0 && (
+              <div><strong>SSS Cards:</strong> {boughtAccount.sssCards.join(', ')}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* success modal replaced by global Toast */}
 
       {/* Community Activity */}
       <div className="grid lg:grid-cols-5 gap-6">

@@ -11,6 +11,8 @@ type Account = {
   auctionStartPrice?: number;
   uploadedBy?: { username?: string } | null;
   createdAt?: string;
+  accountType?: string;
+  status?: string;
 };
 
 function getErrorMessage(err: unknown) {
@@ -91,6 +93,12 @@ export default function AdminAccounts() {
   const { user, loading: authLoading, token } = useAuth();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [saleTypeFilter, setSaleTypeFilter] = useState('');
+  const [accountTypeFilter, setAccountTypeFilter] = useState('');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -118,7 +126,17 @@ export default function AdminAccounts() {
         };
         if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
 
-        const res = await fetch(`/api/admin/accounts?page=${page}&limit=20`, {
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('limit', '20');
+        if (statusFilter) params.set('status', statusFilter);
+        if (saleTypeFilter) params.set('saleType', saleTypeFilter);
+        if (accountTypeFilter) params.set('accountType', accountTypeFilter);
+        if (search) params.set('q', search);
+        if (minPrice) params.set('minPrice', minPrice);
+        if (maxPrice) params.set('maxPrice', maxPrice);
+
+        const res = await fetch(`/api/admin/accounts?${params.toString()}`, {
           method: 'GET',
           headers,
         });
@@ -142,7 +160,12 @@ export default function AdminAccounts() {
     };
 
     load();
-  }, [page, authLoading, user]);
+  }, [page, authLoading, user, search, statusFilter, saleTypeFilter, accountTypeFilter, minPrice, maxPrice]);
+
+  // Debounce search input: reset page to 1 when filters/search change
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, saleTypeFilter, accountTypeFilter, minPrice, maxPrice]);
 
   // modal states for details
   const [showModal, setShowModal] = useState(false);
@@ -154,13 +177,71 @@ export default function AdminAccounts() {
     <div className="p-6">
       <h2 className="text-2xl mb-4">Danh sách tài khoản</h2>
 
-      <div className="mb-3">
-        <button
-          onClick={() => setShowAllDetails(true)}
-          className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white"
-        >
-          Xem chi tiết toàn bộ
-        </button>
+      <div className="mb-3 flex flex-col md:flex-row md:items-center md:gap-4">
+        <div className="flex-1 flex items-center gap-2 mb-2 md:mb-0">
+          <input
+            type="text"
+            placeholder="Tìm theo username hoặc mô tả..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full md:w-80 px-3 py-2 rounded bg-neutral-900 border border-neutral-800"
+          />
+          <button
+            onClick={() => setSearch('')}
+            className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 text-sm"
+          >
+            Xóa
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-2 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm">
+            <option value="">Trạng thái (Tất cả)</option>
+            <option value="active">Active</option>
+            <option value="sold">Sold</option>
+            <option value="expired">Expired</option>
+            <option value="removed">Removed</option>
+          </select>
+
+          <select value={saleTypeFilter} onChange={(e) => setSaleTypeFilter(e.target.value)} className="px-2 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm">
+            <option value="">Sale (Tất cả)</option>
+            <option value="fixed">Fixed</option>
+            <option value="auction">Auction</option>
+          </select>
+
+          <select value={accountTypeFilter} onChange={(e) => setAccountTypeFilter(e.target.value)} className="px-2 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm">
+            <option value="">Loại ACC</option>
+            <option value="random">Random</option>
+            <option value="checked-account">Checked</option>
+          </select>
+
+          <input type="number" placeholder="Min" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-20 px-2 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm" />
+          <input type="number" placeholder="Max" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-20 px-2 py-2 rounded bg-neutral-900 border border-neutral-800 text-sm" />
+
+          <button
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('');
+              setSaleTypeFilter('');
+              setAccountTypeFilter('');
+              setMinPrice('');
+              setMaxPrice('');
+            }}
+            className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700 text-sm"
+          >
+            Reset
+          </button>
+
+        </div>
+
+        <div className="ml-auto mt-2 md:mt-0">
+          <button
+            onClick={() => setShowAllDetails(true)}
+            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white"
+          >
+            Xem chi tiết toàn bộ
+          </button>
+        </div>
       </div>
 
       {loading && <div className="text-sm text-neutral-400">Đang tải...</div>}
@@ -175,6 +256,8 @@ export default function AdminAccounts() {
                 <th className="px-2 py-2">Username</th>
                 <th className="px-2 py-2">Level</th>
                 <th className="px-2 py-2">Rank</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">Loại</th>
                 <th className="px-2 py-2">Sale</th>
                 <th className="px-2 py-2">Uploaded By</th>
                 <th className="px-2 py-2">Created At</th>
@@ -196,6 +279,8 @@ export default function AdminAccounts() {
                   <td className="px-2 py-2 align-top font-mono">{a.username}</td>
                   <td className="px-2 py-2 align-top">{a.level ?? '-'}</td>
                   <td className="px-2 py-2 align-top">{a.rank ?? '-'}</td>
+                  <td className="px-2 py-2 align-top">{a.status ?? '-'}</td>
+                  <td className="px-2 py-2 align-top">{a.accountType ?? '-'}</td>
                   <td className="px-2 py-2 align-top">{a.saleType ?? '-'}</td>
                   <td className="px-2 py-2 align-top">{a.uploadedBy?.username ?? '-'}</td>
                   <td className="px-2 py-2 align-top">{a.createdAt ? new Date(a.createdAt).toLocaleString() : '-'}</td>

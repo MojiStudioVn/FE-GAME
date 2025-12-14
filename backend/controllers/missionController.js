@@ -1,7 +1,9 @@
 import Mission from "../models/Mission.js";
 import UserMission from "../models/UserMission.js";
 import User from "../models/User.js";
+import Log from "../models/Log.js";
 import { createShortLink } from "./linkShortcutController.js";
+import { createUserLog } from "../utils/logService.js";
 
 // GET /api/admin/missions
 export const getMissions = async (req, res) => {
@@ -254,6 +256,29 @@ export const verifyMission = async (req, res) => {
       started.status = "completed";
       started.claimedAt = new Date();
       await started.save();
+      // create detailed log for mission completion
+      try {
+        const oldCoins = (updatedUser.coins || 0) - Number(mission.reward || 0);
+        await createUserLog(req, {
+          message: `Hoàn thành nhiệm vụ: ${mission.name || mission._id}`,
+          source: "backend",
+          page: "/mission/claim",
+          meta: {
+            type: "mission_complete",
+            missionId: mission._id,
+            missionName: mission.name,
+            amount: Number(mission.reward || 0),
+            changeType: Number(mission.reward || 0) >= 0 ? "credit" : "debit",
+            oldCoins,
+            newCoins: updatedUser.coins,
+            ip: clientIp,
+            deviceInfo: req.headers["user-agent"] || "",
+            claimedAt: started.claimedAt,
+          },
+        });
+      } catch (e) {
+        console.warn("Failed to create mission completion log:", e);
+      }
     } else {
       updatedUser = await User.findByIdAndUpdate(
         userId,
@@ -270,6 +295,29 @@ export const verifyMission = async (req, res) => {
         deviceInfo: req.headers["user-agent"] || "",
         status: "completed",
       });
+      // log for newly created completed claim
+      try {
+        const oldCoins = (updatedUser.coins || 0) - Number(mission.reward || 0);
+        await createUserLog(req, {
+          message: `Hoàn thành nhiệm vụ: ${mission.name || mission._id}`,
+          source: "backend",
+          page: "/mission/claim",
+          meta: {
+            type: "mission_complete",
+            missionId: mission._id,
+            missionName: mission.name,
+            amount: Number(mission.reward || 0),
+            changeType: Number(mission.reward || 0) >= 0 ? "credit" : "debit",
+            oldCoins,
+            newCoins: updatedUser.coins,
+            ip: clientIp,
+            deviceInfo: req.headers["user-agent"] || "",
+            claimedAt: new Date(),
+          },
+        });
+      } catch (e) {
+        console.warn("Failed to create mission completion log:", e);
+      }
     }
 
     // increment mission uses

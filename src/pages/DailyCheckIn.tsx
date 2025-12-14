@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { PageHeader } from '../components/PageHeader';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
-import { Check, Gift, Target, Calendar, Trophy, ArrowRight } from 'lucide-react';
+import { Check, Gift, Target, Calendar, Trophy, ArrowRight, X } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function DailyCheckIn() {
+  const navigate = useNavigate();
   const { token, user, refreshUser } = useAuth();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,8 @@ export default function DailyCheckIn() {
   const [currentStreak, setCurrentStreak] = useState(0);
   const [totalCoins, setTotalCoins] = useState(0);
   const [canCheckIn, setCanCheckIn] = useState(true);
+  const [hasCompletedMissionToday, setHasCompletedMissionToday] = useState(false);
+  const [todayChecked, setTodayChecked] = useState(false);
   const [resetTime, setResetTime] = useState('06:58:51');
   const [weekStart, setWeekStart] = useState('');
   const [weekEnd, setWeekEnd] = useState('');
@@ -36,6 +40,8 @@ export default function DailyCheckIn() {
 
       if (data.success) {
         setCanCheckIn(data.data.canCheckIn);
+        setHasCompletedMissionToday(!!data.data.hasCompletedMissionToday);
+        setTodayChecked(!!data.data.todayCheckIn);
         setCurrentStreak(data.data.currentStreak);
         setTotalCoins(data.data.totalCoins);
 
@@ -202,14 +208,15 @@ export default function DailyCheckIn() {
                 <span className="text-neutral-500">(+50 xu)</span>
               </div>
             </div>
-            <Button
-              onClick={handleCheckIn}
-              disabled={!canCheckIn || checking}
-              className="bg-blue-500 hover:bg-blue-600 text-black"
-            >
-              <ArrowRight size={18} />
-              {checking ? 'Đang xử lý...' : 'Đi làm nhiệm vụ'}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => navigate('/dashboard/missions')}
+                className="bg-neutral-700 hover:bg-neutral-600 text-black"
+              >
+                <ArrowRight size={18} />
+                {' '}Làm nhiệm vụ
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
@@ -307,11 +314,29 @@ export default function DailyCheckIn() {
 
           <Button
             onClick={handleCheckIn}
-            disabled={!canCheckIn || checking}
-            className={`${canCheckIn && !checking ? 'bg-neutral-700 hover:bg-neutral-600' : 'bg-neutral-800 cursor-not-allowed'}`}
+            disabled={checking || todayChecked || !hasCompletedMissionToday}
+            className={
+              hasCompletedMissionToday && !todayChecked
+                ? 'bg-blue-500 text-black hover:bg-black hover:text-white active:bg-black active:text-white ring-4 ring-blue-400/30 shadow-lg animate-pulse transition-colors'
+                : 'bg-neutral-800 text-neutral-400 cursor-not-allowed'
+            }
           >
-            <Check size={18} />
-            {checking ? 'Đang xử lý...' : canCheckIn ? 'Cần làm nhiệm vụ' : 'Đã điểm danh'}
+            {checking ? (
+              <Check size={18} />
+            ) : todayChecked ? (
+              <Check size={18} />
+            ) : !hasCompletedMissionToday ? (
+              <X size={18} />
+            ) : (
+              <Check size={18} />
+            )}
+            {checking
+              ? 'Đang xử lý...'
+              : todayChecked
+              ? 'Đã điểm danh'
+              : !hasCompletedMissionToday
+              ? 'Cần hoàn thành 1 nhiệm vụ'
+              : 'Điểm danh'}
           </Button>
         </div>
 

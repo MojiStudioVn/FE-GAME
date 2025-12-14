@@ -12,6 +12,7 @@ import Missions from './pages/Missions';
 import MissionLanding from './pages/MissionLanding';
 import InviteFriends from './pages/InviteFriends';
 import ExchangeAccount from './pages/ExchangeAccount';
+import ShopAcc from './pages/ShopAcc';
 import History from './pages/History';
 import Leaderboard from './pages/Leaderboard';
 import MiniGame from './pages/MiniGame';
@@ -84,6 +85,7 @@ function AppRoutes() {
                   <Route path="/missions" element={<PageLayout><Missions /></PageLayout>} />
                   <Route path="/invite-friends" element={<PageLayout><InviteFriends /></PageLayout>} />
                   <Route path="/exchange-account" element={<PageLayout><ExchangeAccount /></PageLayout>} />
+                  <Route path="/shop-acc" element={<PageLayout><ShopAcc /></PageLayout>} />
                   <Route path="/history" element={<PageLayout><History /></PageLayout>} />
                   <Route path="/leaderboard" element={<PageLayout><Leaderboard /></PageLayout>} />
                   <Route path="/minigame" element={<PageLayout><MiniGame /></PageLayout>} />

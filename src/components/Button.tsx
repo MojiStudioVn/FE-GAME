@@ -2,7 +2,7 @@ import { ReactNode, ButtonHTMLAttributes } from 'react';
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'outline';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   onClick?: () => void;
   disabled?: boolean;
@@ -25,6 +25,7 @@ export function Button({
     primary: 'bg-white text-black hover:bg-neutral-100 hover:shadow-white/20',
     secondary: 'bg-neutral-800 text-white hover:bg-neutral-700 hover:shadow-neutral-700/50',
     outline: 'bg-transparent border border-neutral-700 text-white hover:bg-neutral-800 hover:border-neutral-600',
+    ghost: 'bg-transparent text-neutral-300 hover:bg-neutral-800',
   };
 
   const sizeClasses = {
